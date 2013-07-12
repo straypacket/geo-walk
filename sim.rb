@@ -16,6 +16,7 @@ require "rgeo"
 @@leaving_a = []
 @@arriving_a = []
 @@radii = {}
+@@html_debug = false
 
 ######
 # OAuth setup for Geoluis
@@ -114,7 +115,9 @@ def make_req(point)
 	  #puts jj JSON[response.body]['sleep_until']  # require "json" for this to work.
 	end
 
-	puts "{\"centers\": #{debug_c}, \"radii\": #{debug_r}}"
+	if @@html_debug
+		puts "{\"centers\": #{debug_c}, \"radii\": #{debug_r}}"
+	end
 end
 
 ######
