@@ -66,6 +66,9 @@ def make_req(point)
 	@@arriving_a = []
 	@@radii = {}
 
+	debug_c = []
+	debug_r = []
+
 	data = {
 		'device' => {
 			'name' => 'Sim_fake_device',
@@ -83,7 +86,8 @@ def make_req(point)
 	if response && response.code == "200"
 	  puts "Got #{JSON[response.body]['sleep_until'].length} new fences"
 	  for fence in JSON[response.body]['sleep_until'] do
-	  	#puts fence['status']
+	  	debug_c << fence['center']
+	  	debug_r << fence['radius']
 	  	if fence['type'] == 'circle'
 
 	  		center = @@factory.point(fence['center'][0],fence['center'][1])
@@ -109,6 +113,8 @@ def make_req(point)
 	else
 	  #puts jj JSON[response.body]['sleep_until']  # require "json" for this to work.
 	end
+
+	puts "{\"centers\": #{debug_c}, \"radii\": #{debug_r}}"
 end
 
 ######
