@@ -227,5 +227,5 @@ if @@html_debug or @@html_static_test
 	puts " === test_circlesRAW:"
 	puts @@html_debug_text.inspect.gsub('"{','{').gsub('}"','}').gsub('\"','"')
 	puts " === fakeResponse:"
-	puts old_walk
+	puts JSON[old_walk]
 end
