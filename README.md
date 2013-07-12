@@ -44,7 +44,7 @@ To use this project, you need to setup MongoDB and Ruby with the following gems 
 
 2. **importer.rb** - This file will read, parse and import the geo data into a mongoDB database
 3. **server.rb** - Sinatra API server to generate the paths from the imported data
-4. **static/demo.html** - Demo page that makes a request to the Sinatra API
+4. **public/demo.html** - Demo page that makes a request to the Sinatra API
 5. **sim.rb** - Simulator that makes use of the generated walks and simulates walks that measure energy consumption
 
 ### How to run
