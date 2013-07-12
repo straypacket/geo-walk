@@ -17,6 +17,7 @@ require "rgeo"
 @@arriving_a = []
 @@radii = {}
 @@html_debug = false
+@@html_debug_text = []
 
 ######
 # OAuth setup for Geoluis
@@ -116,7 +117,8 @@ def make_req(point)
 	end
 
 	if @@html_debug
-		puts "{\"centers\": #{debug_c}, \"radii\": #{debug_r}}"
+		#puts "{\"centers\": #{debug_c}, \"radii\": #{debug_r}}"
+		@@html_debug_text << "{\"centers\": #{debug_c}, \"radii\": #{debug_r}}"
 	end
 end
 
@@ -209,4 +211,10 @@ for point in walk['body'] do
 			make_req(point)
 		end
 	end
+end
+
+if @@html_debug
+	puts "====================================================================="
+	puts "Copy this into the public/demo.html file for testing:"
+	puts @@html_debug_text.inspect.gsub('"{','{').gsub('}"','}').gsub('\"','"')
 end
