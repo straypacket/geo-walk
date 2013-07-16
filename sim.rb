@@ -19,6 +19,7 @@ require "rgeo"
 @@html_debug = true
 @@html_static_test = 2
 @@html_debug_text = []
+@@inside = []
 
 ######
 # OAuth setup for Geoluis
@@ -209,11 +210,16 @@ for point in walk['body'] do
 	# check if we already entered
 	for p in @@arriving_a do
 		if rgeo_point.within?(p)
-			puts ">>>>>> Arrived fence with radius #{@@radii[p]}! Making request ..."
-			@@arriving_a.delete(p)
-			@@radii.delete(p)
-			# Make request
-			make_req(point)
+			if @@inside.index(p) != nil
+				# Already detected inside, do nothing
+			else
+				puts ">>>>>> Arrived fence with radius #{@@radii[p]}! Making request ..."
+				@@inside << p
+				#@@arriving_a.delete(p)
+				#@@radii.delete(p)
+				# Make request
+				make_req(point)
+			end
 		else
 			# Do nothing
 			#puts "====== Still outside, doing nothing"
@@ -228,8 +234,9 @@ for point in walk['body'] do
 			#puts "====== Still inside, doing nothing"
 		else
 			puts "<<<<<< Left fence with radius #{@@radii[p]}! Making request ..."
-			@@leaving_a.delete(p)
-			@@radii.delete(p)
+			#@@leaving_a.delete(p)
+			#@@radii.delete(p)
+			@@inside = []
 			# Make request
 			make_req(point)
 		end
