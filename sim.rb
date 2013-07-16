@@ -17,7 +17,7 @@ require "rgeo"
 @@arriving_a = []
 @@radii = {}
 @@html_debug = true
-@@html_static_test = 0
+@@html_static_test = 2
 @@html_debug_text = []
 
 ######
@@ -62,6 +62,12 @@ def distance(x,y)
 	return Math.sqrt((x[0]-y[0])**2 + (x[1]-y[1])**2)
 end
 
+# Method to get the geofences
+def get_fences()
+	fences = @@access_token.request(:get, "/api/v3/geo_fences", HEADERS)
+	return fences.body
+end
+
 # Method to handle server requests
 def make_req(point)
 	# Deleting old fences
@@ -71,6 +77,7 @@ def make_req(point)
 
 	debug_c = []
 	debug_r = []
+	debug_t = []
 
 	data = {
 		'device' => {
@@ -91,6 +98,7 @@ def make_req(point)
 	  for fence in JSON[response.body]['sleep_until'] do
 	  	debug_c << fence['center']
 	  	debug_r << fence['radius']
+	  	debug_t << fence['status']
 	  	if fence['type'] == 'circle'
 
 	  		center = @@factory.point(fence['center'][0],fence['center'][1])
@@ -119,7 +127,7 @@ def make_req(point)
 
 	if @@html_debug or @@html_static_test
 		#puts "{\"centers\": #{debug_c}, \"radii\": #{debug_r}}"
-		@@html_debug_text << "{\"centers\": #{debug_c}, \"radii\": #{debug_r}}"
+		@@html_debug_text << "{\"centers\": #{debug_c}, \"radii\": #{debug_r}, \"type\": #{debug_t}}"
 	end
 end
 
@@ -231,6 +239,8 @@ end
 if @@html_debug or @@html_static_test
 	puts "====================================================================="
 	puts "Copy this into the public/demo.html file for testing."
+	puts " === test_fences:"
+	puts get_fences()
 	puts " === test_circlesRAW:"
 	puts @@html_debug_text.inspect.gsub('"{','{').gsub('}"','}').gsub('\"','"')
 	puts " === fakeResponse:"
