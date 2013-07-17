@@ -20,6 +20,10 @@ require "rgeo"
 @@html_static_test = 0
 @@html_debug_text = []
 @@inside = []
+@@geofence_ids = ['density_0_1', 'density_0_2', 'density_0_3', 'density_0_4', 'density_0_5', 'density_0_6', 'density_0_7', 'density_0_8', 'density_0_9', 'density_1_0']
+@@geofence_test_id = 9
+@@request_counter = 0
+@@left_fence_radius = 0
 
 ######
 # OAuth setup for Geoluis
@@ -97,8 +101,12 @@ def distance(x,y)
 end
 
 # Method to calculate stats from each geofence
-def calculate_stats(fences)
+def calculate_stats(fences,walk,global_stats)
 	for fence in fences
+		if not global_stats
+			next if fence['foreign_id'] != fences[@@geofence_test_id]['foreign_id']
+		end
+
 		points = []
 		for shape in fence['shapes']
 			points << @@factory.point(shape['nw_corner'][0],shape['nw_corner'][1])
@@ -114,8 +122,11 @@ def calculate_stats(fences)
 		geom = @@factory.polygon(linearring)
 		bbox = RGeo::Cartesian::BoundingBox.create_from_geometry(geom)
 		puts "=========="
+		puts "== Fence stats"
 		bbox_area = calculate_area_and_centroid([[bbox.min_x(),bbox.max_y()],[bbox.max_x(),bbox.max_y()],[bbox.max_x(),bbox.min_y()],[bbox.min_x(),bbox.min_y()]])
-		puts " Name: #{fence['name']}\n # polygons: #{fence['shapes'].length}\n Area: #{fence['area']}\n BBox area: #{bbox_area}\n density: #{fence['area']/bbox_area}"
+		puts " Name: #{fence['name']}\n id: #{fence['foreign_id']}\n # polygons: #{fence['shapes'].length}\n Area: #{fence['area']}\n BBox area: #{bbox_area}\n density: #{fence['area']/bbox_area}"
+		puts "== Sim stats"
+		puts " Number of requests: #{@@request_counter}\n Walked distance: #{(walk['distance']*111110.0).ceil}m\n Energy used: #{}\n Avg fence radius: #{@@left_fence_radius/@@request_counter}"
 		puts "=========="
 	end
 	return
@@ -138,10 +149,12 @@ def make_req(point)
 	debug_r = []
 	debug_t = []
 
+	@@request_counter += 1
+
 	data = {
 		'device' => {
 			'name' => 'Sim_fake_device',
-			'foreign_id' => 'sim_id_1',
+			'foreign_id' => @@geofence_ids[@@geofence_test_id],
 			'location' => {
 				'lon' => "#{point[0]}", 
 				'lat' => "#{point[1]}"
@@ -205,7 +218,7 @@ if (@@html_static_test and @@html_debug)
 	end
 	walk = JSON[test_data[@@html_static_test-1]]
 else
-	url = 'http://localhost:4570/?lon=139.698345&lat=35.666641&length=2000'
+	url = 'http://localhost:4570/?lon=139.694345&lat=35.664641&length=2000'
 	resp = Net::HTTP.get_response(URI.parse(url))
 	walk = JSON[resp.body]
 end
@@ -257,13 +270,15 @@ puts "Re-sampled new walk with #{walk['body'].length} points"
 # Simulate geofence behaviour
 ####
 
+puts "_~^ Starting test for geofence #{@@geofence_ids[@@geofence_test_id]} ^~_"
+
 # Initial request
 make_req(walk['body'][0])
 
 # Cycle through all the points in the walk
 for point in walk['body'] do
 	rgeo_point = @@factory.point(point[0],point[1])
-	puts rgeo_point
+	#puts rgeo_point
 
 	# For each polygon in the arriving list
 	# check if we already entered
@@ -293,6 +308,7 @@ for point in walk['body'] do
 			#puts "====== Still inside, doing nothing"
 		else
 			puts "<<<<<< Left fence with radius #{@@radii[p]}! Making request ..."
+			@@left_fence_radius += @@radii[p]
 			#@@leaving_a.delete(p)
 			#@@radii.delete(p)
 			@@inside = []
@@ -303,7 +319,7 @@ for point in walk['body'] do
 end
 
 puts "====================================================================="
-puts calculate_stats(JSON[get_fences()])
+puts calculate_stats(JSON[get_fences()],walk,false)
 
 if (@@html_debug == true or @@html_static_test > 0)
 	puts "====================================================================="
