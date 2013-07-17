@@ -40,7 +40,7 @@ require "rgeo"
 	# geofence_ids (which are in fact geo_object id's according to the JSON spec)
 	'sim_geofence_ids' => ['density_0_1', 'density_0_2', 'density_0_3', 'density_0_4', 'density_0_5', 'density_0_6', 'density_0_7', 'density_0_8', 'density_0_9', 'density_1_0'],
 	# list of geofence_ids to test
-	'sim_geofence_test_id' => [0]
+	'sim_geofence_test_id' => [5]
 }
 
 ######
@@ -190,7 +190,16 @@ def get_fences(*args)
 	fences = @@vars['access_token'].request(:get, "/api/v3/geo_fences", HEADERS)
 	result = nil
 	if args.length > 0
-		result = [JSON[fences.body][args[0]].to_json]
+		# Uncomment if other shapes than circles
+		#result = [JSON[fences.body][args[0]].to_json]
+
+		# Since we're only using circles for now, we don't need the points, only the generators
+		aux = JSON[fences.body][args[0]]
+		for i in aux['shapes']
+			i['points'] = []
+		end
+		result = [aux.to_json]
+
 	else
 		result = fences.body
 	end
