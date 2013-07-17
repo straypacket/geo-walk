@@ -30,7 +30,7 @@ require "rgeo"
 # Name of server geofences
 @@geofence_ids = ['density_0_1', 'density_0_2', 'density_0_3', 'density_0_4', 'density_0_5', 'density_0_6', 'density_0_7', 'density_0_8', 'density_0_9', 'density_1_0']
 # Which of the above geofences to test
-@@geofence_test_id = 0
+@@geofence_test_id = [0,1,2,3,4,5,6,7,8,9]
 
 ######
 # OAuth setup for Geoluis
@@ -107,17 +107,29 @@ def distance(x,y)
 	return Math.sqrt((x[0]-y[0])**2 + (x[1]-y[1])**2)
 end
 
+# Method to calculate system stats
+def calculate_sim_stats(fences,walk)
+	puts "== System stats"
+	puts " Walked distance: #{(walk['distance']*111110.0).ceil}m
+ Sim time: #{(walk['distance']*111110.0).ceil/@@walk_speed_ms}s"
+ return
+end
+
 # Method to calculate stats from each geofence
-def calculate_stats(fences,walk,global_stats)
+def calculate_stats(fences,walk,geofence_id,global_stats)
 	for fence in fences
 		if not global_stats
-			next if fence['foreign_id'] != fences[@@geofence_test_id]['foreign_id']
+			next if fence['foreign_id'] != fences[geofence_id]['foreign_id']
 		end
 
 		points = []
+		fence_radii = 0
 		for shape in fence['shapes']
 			points << @@factory.point(shape['nw_corner'][0],shape['nw_corner'][1])
 			points << @@factory.point(shape['se_corner'][0],shape['se_corner'][1])
+			if shape['type'] == 'circle'
+				fence_radii += shape['radius']
+			end
 		end
 
 		# A ring has to have 3 points, let's create a fake point in the middle
@@ -130,9 +142,17 @@ def calculate_stats(fences,walk,global_stats)
 		bbox = RGeo::Cartesian::BoundingBox.create_from_geometry(geom)
 		puts "== Fence stats"
 		bbox_area = calculate_area_and_centroid([[bbox.min_x(),bbox.max_y()],[bbox.max_x(),bbox.max_y()],[bbox.max_x(),bbox.min_y()],[bbox.min_x(),bbox.min_y()]])
-		puts " Name: #{fence['name']}\n id: #{fence['foreign_id']}\n # polygons: #{fence['shapes'].length}\n Area: #{fence['area']}\n BBox area: #{bbox_area}\n density: #{fence['area']/bbox_area}"
-		puts "== Sim stats"
-		puts " Number of requests: #{@@request_counter}\n Walked distance: #{(walk['distance']*111110.0).ceil}m\n Energy used: #{}\n Avg fence radius: #{@@left_fence_radius/@@request_counter}m"
+		puts " Name: #{fence['name']}
+ id: #{fence['foreign_id']}
+ # polygons: #{fence['shapes'].length}
+ Area: #{fence['area']}
+ BBox area: #{bbox_area}
+ density: #{fence['area']/bbox_area}"
+		puts "== Run stats"
+		puts " Number of requests: #{@@request_counter}
+ Energy used: #{}%
+ Avg geofence radius: #{fence_radii*1.0/fence['shapes'].length}m
+ Avg JSON leave fence radius: #{@@left_fence_radius/@@request_counter}m"
 		puts "=========="
 	end
 	return
@@ -297,64 +317,71 @@ puts "Re-sampled new walk with #{walk['body'].length} points"
 # Simulate geofence behaviour
 ####
 
-puts "\n_~^ Starting test for geofence #{@@geofence_ids[@@geofence_test_id]} ^~_"
-
-# Initial request
-make_req(walk['body'][0],@@geofence_test_id)
-
-# Cycle through all the points in the walk
-for point in walk['body'] do
-	rgeo_point = @@factory.point(point[0],point[1])
-	#puts rgeo_point
-
-	# For each polygon in the arriving list
-	# check if we already entered
-	for p in @@arriving_a do
-		if rgeo_point.within?(p)
-			if @@inside.index(p) != nil
-				# Already detected inside, do nothing
-			else
-				puts ">>>>>> Arrived fence with radius #{@@radii[p]}! Making request ..." if @@sim_static_walk < 1
-				@@inside << p
-				#@@arriving_a.delete(p)
-				#@@radii.delete(p)
-				# Make request
-				make_req(point,@@geofence_test_id)
-			end
-		else
-			# Do nothing
-			#puts "====== Still outside, doing nothing"
-		end
-	end
-
-	# For each polygon in the leaving list
-	# check if we already left
-	for p in @@leaving_a do
-		if rgeo_point.within?(p)
-			# Do nothing
-			#puts "====== Still inside, doing nothing"
-		else
-			puts "<<<<<< Left fence with radius #{@@radii[p]}! Making request ..." if @@sim_static_walk < 1 
-			@@left_fence_radius += @@radii[p]
-			#@@leaving_a.delete(p)
-			#@@radii.delete(p)
-			@@inside = []
-			# Make request
-			make_req(point,@@geofence_test_id)
-		end
-	end
-end
-
+# Calculate simulation-wide stats
 puts "====================================================================="
-puts calculate_stats(JSON[get_fences()],walk,false)
+puts calculate_sim_stats(JSON[get_fences()],walk)
 
-if (@@html_debug == true or @@html_static_test > 0)
-	puts "====================================================================="
-	puts "Copy this into the public/demo.html file for testing."
-	puts " === test_fences:"
-	puts get_fences()
-	puts " === test_circlesRAW:"
-	puts @@html_debug_text.inspect.gsub('"{','{').gsub('}"','}').gsub('\"','"')
-	puts " === fakeResponse:"
-	puts JSON[old_walk]
+# Test each of the @@geofence_test_id's
+for geo_id in @@geofence_test_id
+
+	puts "_~^ Starting test for geofence #{@@geofence_ids[geo_id]} ^~_"
+
+	# Initial request
+	make_req(walk['body'][0],geo_id)
+
+	# Cycle through all the points in the walk
+	for point in walk['body'] do
+		rgeo_point = @@factory.point(point[0],point[1])
+		#puts rgeo_point
+
+		# For each polygon in the arriving list
+		# check if we already entered
+		for p in @@arriving_a do
+			if rgeo_point.within?(p)
+				if @@inside.index(p) != nil
+					# Already detected inside, do nothing
+				else
+					puts ">>>>>> Arrived fence with radius #{@@radii[p]}! Making request ..." if @@sim_static_walk < 1
+					@@inside << p
+					#@@arriving_a.delete(p)
+					#@@radii.delete(p)
+					# Make request
+					make_req(point,geo_id)
+				end
+			else
+				# Do nothing
+				#puts "====== Still outside, doing nothing"
+			end
+		end
+
+		# For each polygon in the leaving list
+		# check if we already left
+		for p in @@leaving_a do
+			if rgeo_point.within?(p)
+				# Do nothing
+				#puts "====== Still inside, doing nothing"
+			else
+				puts "<<<<<< Left fence with radius #{@@radii[p]}! Making request ..." if @@sim_static_walk < 1 
+				@@left_fence_radius += @@radii[p]
+				#@@leaving_a.delete(p)
+				#@@radii.delete(p)
+				@@inside = []
+				# Make request
+				make_req(point,geo_id)
+			end
+		end
+	end
+
+	puts calculate_stats(JSON[get_fences()],walk,geo_id,false)
+
+	if (@@html_debug == true or @@html_static_test > 0)
+		puts "====================================================================="
+		puts "Copy this into the public/demo.html file for testing."
+		puts " === test_fences:"
+		puts get_fences()
+		puts " === test_circlesRAW:"
+		puts @@html_debug_text.inspect.gsub('"{','{').gsub('}"','}').gsub('\"','"')
+		puts " === fakeResponse:"
+		puts JSON[old_walk]
+	end
 end
