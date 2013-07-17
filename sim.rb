@@ -11,8 +11,10 @@ require "rgeo"
 @@vars = {
 	'walk_speed_kmh' => 4.0+rand()*2,
 	'walk_speed_ms' => ((4.0+rand()*2)/(60*60))*1000,
-	# ':buffer_resolution represents the resolution circles should have when converted into polygons
+	# :buffer_resolution represents the resolution circles should have when converted into polygons
 	'factory' => RGeo::Geographic.simple_mercator_factory( :buffer_resolution => 4),
+	# 25m threshold, using Luis' magical number to convert degrees to meters
+	'thresh' => 25.0/111110.0,
 	'leaving_a' => [],
 	'arriving_a' => [],
 	'radii' => {},
@@ -21,9 +23,10 @@ require "rgeo"
 	'html_debug_text' => [],
 	'inside' => [],
 	'request_counter' => 0,
+	'request_size' => 0,
 	'left_fence_radius' => 0,
 	# Sim variables
-	'sim_static_walk' => 3,
+	'sim_static_walk' => 1,
 	'sim_geofence_ids' => ['density_0_1', 'density_0_2', 'density_0_3', 'density_0_4', 'density_0_5', 'density_0_6', 'density_0_7', 'density_0_8', 'density_0_9', 'density_1_0'],
 	'sim_geofence_test_id' => [0,1,2,3,4,5,6,7,8,9]
 }
@@ -105,27 +108,23 @@ end
 
 # Method to calculate system stats
 def calculate_sim_stats(fences,walk)
-	puts "== System stats"
+	puts "====== System stats"
 	puts " Walked distance: #{(walk['distance']*111110.0).ceil}m
  Sim time: #{(walk['distance']*111110.0).ceil/@@vars['walk_speed_ms']}s"
  return
 end
 
 # Method to calculate stats from each geofence
-def calculate_stats(fences,walk,geofence_id,global_stats)
+def calculate_fence_stats(fences,walk,geofence_id,global_stats)
 	for fence in fences
 		if not global_stats
 			next if fence['foreign_id'] != fences[geofence_id]['foreign_id']
 		end
 
 		points = []
-		fence_radii = 0
 		for shape in fence['shapes']
 			points << @@vars['factory'].point(shape['nw_corner'][0],shape['nw_corner'][1])
 			points << @@vars['factory'].point(shape['se_corner'][0],shape['se_corner'][1])
-			if shape['type'] == 'circle'
-				fence_radii += shape['radius']
-			end
 		end
 
 		# A ring has to have 3 points, let's create a fake point in the middle
@@ -136,16 +135,35 @@ def calculate_stats(fences,walk,geofence_id,global_stats)
 		linearring = @@vars['factory'].linear_ring(points)
 		geom = @@vars['factory'].polygon(linearring)
 		bbox = RGeo::Cartesian::BoundingBox.create_from_geometry(geom)
-		puts "== Fence stats"
+		puts "==== Fence stats"
 		bbox_area = calculate_area_and_centroid([[bbox.min_x(),bbox.max_y()],[bbox.max_x(),bbox.max_y()],[bbox.max_x(),bbox.min_y()],[bbox.min_x(),bbox.min_y()]])
 		puts " Name: #{fence['name']}
  id: #{fence['foreign_id']}
- # polygons: #{fence['shapes'].length}
+ Number of polygons: #{fence['shapes'].length}
  Area: #{fence['area']}
  BBox area: #{bbox_area}
  density: #{fence['area']/bbox_area}"
+	end
+	return
+end
+
+# Method to calculate stats from each run
+def calculate_run_stats(fences,walk,geofence_id,global_stats)
+	for fence in fences
+		if not global_stats
+			next if fence['foreign_id'] != fences[geofence_id]['foreign_id']
+		end
+
+		fence_radii = 0
+		for shape in fence['shapes']
+			if shape['type'] == 'circle'
+				fence_radii += shape['radius']
+			end
+		end
+
 		puts "== Run stats"
 		puts " Number of requests: #{@@vars['request_counter']}
+ Avg request size: #{@@vars['request_size']/@@vars['request_counter']}
  Energy used: #{}%
  Avg geofence radius: #{fence_radii*1.0/fence['shapes'].length}m
  Avg JSON leave fence radius: #{@@vars['left_fence_radius']/@@vars['request_counter']}m"
@@ -187,6 +205,8 @@ def make_req(point,geofence_id)
 	}
 
 	response = @@vars['access_token'].put("/api/v3/devices.json", JSON[data], HEADERS)
+
+	@@vars['request_size'] += response.body.length
 
 	if response && response.code == "200"
 	  puts "Got #{JSON[response.body]['sleep_until'].length} new fences" if @@vars['sim_static_walk'] < 1
@@ -268,9 +288,7 @@ puts "Got initial walk with #{walk['body'].length} points"
 # Pre-process walk
 ####
 
-# Inject intermediate points 
-# * 50m threshold, using Luis' magical number to convert degrees to meters
-thresh = 25.0/111110.0
+# Inject intermediate points according to @@vars['thresh']
 if (@@vars['html_static_test'] and @@vars['html_debug'])
 	new_walk = JSON[test_data[@@vars['html_static_test']-1]]
 	old_walk = JSON[test_data[@@vars['html_static_test']-1]]
@@ -288,14 +306,14 @@ for c in (walk['body'].length-1).times do
 	aux = walk['body'][c]
 
 	# If the hop is too long
-	if dist > thresh
+	if dist > @@vars['thresh']
 		# Calculate in how many segments to divide the hop
-		part = (dist/thresh).ceil
+		part = (dist/@@vars['thresh']).ceil
 		# Calculate the distance for each segment
 		d_x = aux[0]>walk['body'][c+1][0] ? (aux[0]-walk['body'][c+1][0]).abs/part : (walk['body'][c+1][0]-aux[0]).abs/part
 		d_y = aux[1]>walk['body'][c+1][1] ? (aux[1]-walk['body'][c+1][1]).abs/part : (walk['body'][c+1][1]-aux[1]).abs/part
 
-		while dist > thresh
+		while dist > @@vars['thresh']
 			x = aux[0] > walk['body'][c+1][0] ? aux[0]-d_x : aux[0]+d_x
 			y = aux[1] > walk['body'][c+1][1] ? aux[1]-d_y : aux[1]+d_y
 			aux = [x,y]
@@ -315,12 +333,17 @@ puts "Re-sampled new walk with #{walk['body'].length} points"
 
 # Calculate simulation-wide stats
 puts "====================================================================="
-puts calculate_sim_stats(JSON[get_fences()],walk)
+calculate_sim_stats(JSON[get_fences()],walk)
 
 # Test each of the @@var['sim_geofence_test_id']'s
 for geo_id in @@vars['sim_geofence_test_id']
 
-	puts "_~^ Starting test for geofence #{@@vars['sim_geofence_ids'][geo_id]} ^~_"
+	puts "\n_~^ Starting test for geofence #{@@vars['sim_geofence_ids'][geo_id]} ^~_"
+
+	# Init counters
+	@@vars['request_counter'] = 0
+	@@vars['request_size'] = 0
+	@@vars['left_fence_radius'] = 0
 
 	# Initial request
 	make_req(walk['body'][0],geo_id)
@@ -368,7 +391,8 @@ for geo_id in @@vars['sim_geofence_test_id']
 		end
 	end
 
-	puts calculate_stats(JSON[get_fences()],walk,geo_id,false)
+	calculate_fence_stats(JSON[get_fences()],walk,geo_id,false)
+	calculate_run_stats(JSON[get_fences()],walk,geo_id,false)
 
 	if (@@vars['html_debug'] == true or @@vars['html_static_test'] > 0)
 		puts "====================================================================="
