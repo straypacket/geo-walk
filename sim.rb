@@ -5,32 +5,28 @@ require "rack"
 require "rgeo"
 
 ######
-# Define global variables
+# Define system variables
 ####
-@@walk_speed_kmh = 4.0+rand()*2 #km/h
-@@walk_speed_ms = (@@walk_speed_kmh/(60*60))*1000 #m/s
-#@@tick = 1.0/walk_speed_ms #seconds
-# :buffer_resolution represents the resolution circles should have when converted into polygons
-# Indeed, even for RGeo circles _are_ polygons
-@@factory = RGeo::Geographic.simple_mercator_factory(:buffer_resolution => 4)
-@@leaving_a = []
-@@arriving_a = []
-@@radii = {}
-@@html_debug = false
-@@html_static_test = 0
-@@html_debug_text = []
-@@inside = []
-@@request_counter = 0
-@@left_fence_radius = 0
-###
-# Sim parameters
-###
-# If > 0 enables one of the static paths
-@@sim_static_walk = 3
-# Name of server geofences
-@@geofence_ids = ['density_0_1', 'density_0_2', 'density_0_3', 'density_0_4', 'density_0_5', 'density_0_6', 'density_0_7', 'density_0_8', 'density_0_9', 'density_1_0']
-# Which of the above geofences to test
-@@geofence_test_id = [0,1,2,3,4,5,6,7,8,9]
+
+@@vars = {
+	'walk_speed_kmh' => 4.0+rand()*2,
+	'walk_speed_ms' => ((4.0+rand()*2)/(60*60))*1000,
+	# ':buffer_resolution represents the resolution circles should have when converted into polygons
+	'factory' => RGeo::Geographic.simple_mercator_factory( :buffer_resolution => 4),
+	'leaving_a' => [],
+	'arriving_a' => [],
+	'radii' => {},
+	'html_debug' => false,
+	'html_static_test' => 0,
+	'html_debug_text' => [],
+	'inside' => [],
+	'request_counter' => 0,
+	'left_fence_radius' => 0,
+	# Sim variables
+	'sim_static_walk' => 3,
+	'sim_geofence_ids' => ['density_0_1', 'density_0_2', 'density_0_3', 'density_0_4', 'density_0_5', 'density_0_6', 'density_0_7', 'density_0_8', 'density_0_9', 'density_1_0'],
+	'sim_geofence_test_id' => [0,1,2,3,4,5,6,7,8,9]
+}
 
 ######
 # OAuth setup for Geoluis
@@ -40,7 +36,7 @@ SECRET = "2V8vjEfUfpak6o8pfwXsabKM1jkIBFmdGaQBYkdJ"
 SITE = "http://geo.skillupjapan.net"
 HEADERS = { 'Accepts' => 'application/json', 'Content-Type' => 'application/json' }
 consumer = OAuth::Consumer.new(KEY, SECRET, site: SITE, http_method: :get)
-@@access_token = OAuth::AccessToken.new consumer
+@@vars['access_token'] = OAuth::AccessToken.new consumer
 
 # OAuth monkey patching
 module OAuth::RequestProxy::Net
@@ -111,7 +107,7 @@ end
 def calculate_sim_stats(fences,walk)
 	puts "== System stats"
 	puts " Walked distance: #{(walk['distance']*111110.0).ceil}m
- Sim time: #{(walk['distance']*111110.0).ceil/@@walk_speed_ms}s"
+ Sim time: #{(walk['distance']*111110.0).ceil/@@vars['walk_speed_ms']}s"
  return
 end
 
@@ -125,8 +121,8 @@ def calculate_stats(fences,walk,geofence_id,global_stats)
 		points = []
 		fence_radii = 0
 		for shape in fence['shapes']
-			points << @@factory.point(shape['nw_corner'][0],shape['nw_corner'][1])
-			points << @@factory.point(shape['se_corner'][0],shape['se_corner'][1])
+			points << @@vars['factory'].point(shape['nw_corner'][0],shape['nw_corner'][1])
+			points << @@vars['factory'].point(shape['se_corner'][0],shape['se_corner'][1])
 			if shape['type'] == 'circle'
 				fence_radii += shape['radius']
 			end
@@ -134,11 +130,11 @@ def calculate_stats(fences,walk,geofence_id,global_stats)
 
 		# A ring has to have 3 points, let's create a fake point in the middle
 		if points.length <= 2
-			points << @@factory.point((points[0].x()+points[1].x())/2,(points[0].y()+points[1].y())/2)
+			points << @@vars['factory'].point((points[0].x()+points[1].x())/2,(points[0].y()+points[1].y())/2)
 		end
 
-		linearring = @@factory.linear_ring(points)
-		geom = @@factory.polygon(linearring)
+		linearring = @@vars['factory'].linear_ring(points)
+		geom = @@vars['factory'].polygon(linearring)
 		bbox = RGeo::Cartesian::BoundingBox.create_from_geometry(geom)
 		puts "== Fence stats"
 		bbox_area = calculate_area_and_centroid([[bbox.min_x(),bbox.max_y()],[bbox.max_x(),bbox.max_y()],[bbox.max_x(),bbox.min_y()],[bbox.min_x(),bbox.min_y()]])
@@ -149,10 +145,10 @@ def calculate_stats(fences,walk,geofence_id,global_stats)
  BBox area: #{bbox_area}
  density: #{fence['area']/bbox_area}"
 		puts "== Run stats"
-		puts " Number of requests: #{@@request_counter}
+		puts " Number of requests: #{@@vars['request_counter']}
  Energy used: #{}%
  Avg geofence radius: #{fence_radii*1.0/fence['shapes'].length}m
- Avg JSON leave fence radius: #{@@left_fence_radius/@@request_counter}m"
+ Avg JSON leave fence radius: #{@@vars['left_fence_radius']/@@vars['request_counter']}m"
 		puts "=========="
 	end
 	return
@@ -160,22 +156,22 @@ end
 
 # Method to get the geofences
 def get_fences()
-	fences = @@access_token.request(:get, "/api/v3/geo_fences", HEADERS)
+	fences = @@vars['access_token'].request(:get, "/api/v3/geo_fences", HEADERS)
 	return fences.body
 end
 
 # Method to handle server requests
 def make_req(point,geofence_id)
 	# Deleting old fences
-	@@leaving_a = []
-	@@arriving_a = []
-	@@radii = {}
+	@@vars['leaving_a'] = []
+	@@vars['arriving_a'] = []
+	@@vars['radii'] = {}
 
 	debug_c = []
 	debug_r = []
 	debug_t = []
 
-	@@request_counter += 1
+	@@vars['request_counter'] += 1
 
 	data = {
 		'device' => {
@@ -186,35 +182,35 @@ def make_req(point,geofence_id)
 				'lat' => "#{point[1]}"
 			}
 		},
-		'speed' => "#{@@walk_speed_ms}",
-		'geo_object_ids' => [@@geofence_ids[geofence_id]]
+		'speed' => "#{@@vars['walk_speed_ms']}",
+		'geo_object_ids' => [@@vars['sim_geofence_ids'][geofence_id]]
 	}
 
-	response = @@access_token.put("/api/v3/devices.json", JSON[data], HEADERS)
+	response = @@vars['access_token'].put("/api/v3/devices.json", JSON[data], HEADERS)
 
 	if response && response.code == "200"
-	  puts "Got #{JSON[response.body]['sleep_until'].length} new fences" if @@sim_static_walk < 1
+	  puts "Got #{JSON[response.body]['sleep_until'].length} new fences" if @@vars['sim_static_walk'] < 1
 	  for fence in JSON[response.body]['sleep_until'] do
 	  	debug_c << fence['center']
 	  	debug_r << fence['radius']
 	  	debug_t << fence['status']
 	  	if fence['type'] == 'circle'
 
-	  		center = @@factory.point(fence['center'][0],fence['center'][1])
+	  		center = @@vars['factory'].point(fence['center'][0],fence['center'][1])
 	  		poly = center.buffer(fence['radius'])
 
 	  		# Add poly to leaving list
 	  		if fence['status'] == 'LEAVING'
 	  			#puts "Got leaving fence"
-	  			@@leaving_a << poly
-	  			@@radii[poly] = fence['radius']
+	  			@@vars['leaving_a'] << poly
+	  			@@vars['radii'][poly] = fence['radius']
 	  		end
 
 	  		# Add poly to arriving list
   			if fence['status'] == 'ARRIVING'
   				#puts "Got arriving fence"
-  				@@arriving_a << poly
-  				@@radii[poly] = fence['radius']
+  				@@vars['arriving_a'] << poly
+  				@@vars['radii'][poly] = fence['radius']
   			end
 	  	end
 	  	#puts poly
@@ -224,27 +220,27 @@ def make_req(point,geofence_id)
 	  #puts jj JSON[response.body]['sleep_until']  # require "json" for this to work.
 	end
 
-	if @@html_debug or @@html_static_test
+	if @@vars['html_debug'] or @@vars['html_static_test']
 		#puts "{\"centers\": #{debug_c}, \"radii\": #{debug_r}}"
-		@@html_debug_text << "{\"centers\": #{debug_c}, \"radii\": #{debug_r}, \"type\": #{debug_t}}"
+		@@vars['html_debug_text'] << "{\"centers\": #{debug_c}, \"radii\": #{debug_r}, \"type\": #{debug_t}}"
 	end
 end
 
 ######
 # Get walk data from walk server
 ####
-if (@@html_static_test and @@html_debug)
+if (@@vars['html_static_test'] and @@vars['html_debug'])
 	test_data = [
 		'{"distance":0.01855711480024141,"body":[[139.6994996,35.6657032],[139.6995782,35.6656964],[139.6996389,35.6657043],[139.6997465,35.6657774],[139.6997016,35.6663966],[139.6997347,35.6665372],[139.6997568,35.666651],[139.7000179,35.6657559],[139.7001158,35.6657181],[139.7003606,35.6657467],[139.7004236,35.665742],[139.7004752,35.6657258],[139.7006076,35.6656308],[139.7008764,35.6653847],[139.700978,35.6653301],[139.7014896,35.6650943],[139.7028937,35.6641389],[139.7028797,35.6641606],[139.7028592,35.6642055],[139.7029078,35.6643141],[139.7029614,35.6644054],[139.7030126,35.6644695],[139.7030904,35.6645551],[139.7032603,35.6647376],[139.7033411,35.6647595],[139.7040172,35.6637547],[139.7043312,35.6635739],[139.7051218,35.6630668],[139.7053009,35.6629616],[139.7061349,35.6624272],[139.7066613,35.6621213],[139.7067103,35.6620935],[139.7070218,35.6619224],[139.7072794,35.6617521],[139.7073346,35.6617112],[139.7076152,35.6614438],[139.7077123,35.6613459],[139.7088832,35.6603396],[139.7097746,35.6605931],[139.7119626,35.6610383],[139.7121575,35.6608504],[139.7122463,35.6607751],[139.712342,35.6607127],[139.7124545,35.6606483],[139.7128499,35.6619697],[139.7129493,35.6620888],[139.7135611,35.6627148],[139.7142424,35.6634116],[139.714319,35.66349],[139.7146347,35.663813],[139.7146661,35.663846],[139.7167647,35.6633986],[139.7162431,35.6628494],[139.7146349,35.6622081],[139.7141657,35.6624447],[139.7141813,35.661293],[139.7136965,35.6606976],[139.7133211,35.6609076],[139.7137764,35.6614902]]}',
 		'{"distance":0.01838448581082566,"body":[[139.6997568,35.666651],[139.6998543,35.6670942],[139.6997347,35.6665372],[139.7000152,35.6665468],[139.7002847,35.6665547],[139.7006895,35.6664676],[139.7006266,35.6665104],[139.7005704,35.6665249],[139.7005068,35.6665125],[139.7004148,35.6664693],[139.7002882,35.6663608],[139.6994996,35.6657032],[139.6995782,35.6656964],[139.6996389,35.6657043],[139.6997465,35.6657774],[139.7000152,35.6665468],[139.7002882,35.6663608],[139.7010999,35.6667305],[139.701208,35.6668598],[139.7014516,35.66687],[139.7014418,35.6669992],[139.7020374,35.6654916],[139.7022502,35.6654462],[139.7028268,35.6653454],[139.7029913,35.6652658],[139.7028937,35.6641389],[139.7028797,35.6641606],[139.7028592,35.6642055],[139.7029078,35.6643141],[139.7029614,35.6644054],[139.7030126,35.6644695],[139.7030904,35.6645551],[139.7032603,35.6647376],[139.7033411,35.6647595],[139.7040386,35.6653562],[139.7041494,35.6652797],[139.704262,35.6652081],[139.7044404,35.6650128],[139.7035761,35.6643175],[139.7042583,35.6647485],[139.7049147,35.66482],[139.7051769,35.6643503],[139.7055081,35.6645412],[139.7052339,35.664896],[139.7064573,35.665663],[139.7066718,35.665353],[139.7062025,35.665522],[139.706545,35.6651608],[139.7072701,35.6652068],[139.7069542,35.6649935],[139.7066424,35.664809],[139.7062869,35.6646207],[139.7066436,35.6642663],[139.7072752,35.6638266],[139.7074607,35.6637305],[139.7073689,35.663597],[139.7075614,35.6635176],[139.7079319,35.6640603],[139.7076134,35.6645692],[139.707878,35.6643604],[139.7079818,35.6643072],[139.708025,35.6642869],[139.7081504,35.6642671],[139.7082026,35.6642766],[139.708381,35.6644338]]}',
 		'{"distance":0.019089555171858213,"body":[[139.6979236,35.6669531],[139.6979409,35.6668709],[139.6979687,35.6667758],[139.6979981,35.6666938],[139.6980284,35.6666264],[139.6981863,35.6663215],[139.6974508,35.667105],[139.6971175,35.667718],[139.6957726,35.6684739],[139.6958451,35.6684899],[139.6959265,35.6684972],[139.6960274,35.6684966],[139.6962123,35.668465],[139.6962816,35.6684533],[139.6963539,35.6684492],[139.6964324,35.6684525],[139.6964675,35.6684386],[139.6965645,35.6684389],[139.6973763,35.6684766],[139.6974129,35.6684913],[139.6975346,35.6683054],[139.6975248,35.6684524],[139.698664,35.6681459],[139.6986702,35.6675154],[139.6984688,35.6674045],[139.6992594,35.6669198],[139.699592,35.6666487],[139.6993265,35.6654966],[139.699493,35.6653777],[139.6984418,35.6651256],[139.6983591,35.6652677],[139.6977451,35.665248],[139.6973114,35.6652341],[139.698489,35.6648126],[139.6986238,35.6648264],[139.6986834,35.664836],[139.6988208,35.6648762],[139.6988617,35.6648994],[139.698957,35.6649555],[139.6990391,35.6650189],[139.6993244,35.6652587],[139.6994063,35.6652989],[139.699493,35.6653777],[139.6997447,35.6656063],[139.6997896,35.6656882],[139.7005491,35.6664375],[139.7006266,35.6665104],[139.7006577,35.6665396],[139.700713,35.6665767],[139.7007541,35.6666025],[139.7008105,35.6666345],[139.700872,35.6666663],[139.700921,35.6666855],[139.7009745,35.6667029],[139.7010469,35.6667208],[139.7010999,35.6667305],[139.701123,35.6667348],[139.7012705,35.6667527],[139.7014794,35.6667731],[139.7015844,35.6667824],[139.7016813,35.6668651],[139.7016894,35.6668805],[139.7017377,35.6674415],[139.7018033,35.6680952],[139.7018282,35.6683743],[139.7018986,35.6687568],[139.7021583,35.6690891],[139.702325,35.6691596],[139.7028527,35.6693914],[139.7027896,35.6695729],[139.7029614,35.6695889],[139.7033195,35.6695031],[139.7037855,35.6692835],[139.7031649,35.6697423],[139.7031874,35.669755],[139.7033104,35.6698239],[139.7034243,35.6698064],[139.7035905,35.6698639],[139.7036363,35.6698718],[139.7036881,35.6698785],[139.7038786,35.6699354],[139.7040127,35.6699726],[139.7030793,35.6696652],[139.7029485,35.6697122],[139.702724,35.6697799],[139.7029485,35.6697122],[139.7029598,35.6694161],[139.7030967,35.669382],[139.703191,35.6693449],[139.7038798,35.669033],[139.7041712,35.6689],[139.7047319,35.6686409],[139.7051015,35.6684703],[139.7051462,35.6684101],[139.7051822,35.668365],[139.7052494,35.6683343],[139.705377,35.6682796]]}'
 	]
-	if @@html_static_test-1 >= test_data.length or @@html_static_test < 0
+	if @@vars['html_static_test']-1 >= test_data.length or @@vars['html_static_test'] < 0
 		puts "Wrong number of test_data set"
 		return 0
 	end
-	walk = JSON[test_data[@@html_static_test-1]]
-elsif @@sim_static_walk > 0
+	walk = JSON[test_data[@@vars['html_static_test']-1]]
+elsif @@vars['sim_static_walk'] > 0
 	test_data = [
 		'{"distance":0.01989326090392547,"body":[[139.6931389,35.6646286],[139.6919671,35.6643263],[139.6914338,35.664197],[139.6910844,35.6641088],[139.6906986,35.6639866],[139.6906986,35.6639866],[139.6900109,35.6637591],[139.689662,35.6636454],[139.6892554,35.6635123],[139.6888693,35.6634024],[139.6885112,35.6632988],[139.6881277,35.6631882],[139.6877773,35.6630872],[139.6875882,35.6631161],[139.6866202,35.6634698],[139.6857199,35.6637674],[139.6851912,35.6639589],[139.6849855,35.6640462],[139.6844678,35.6642107],[139.6841017,35.664287],[139.6835831,35.6645003],[139.6837089,35.6646945],[139.6835831,35.6645003],[139.6834242,35.6642439],[139.6832056,35.6638939],[139.6831685,35.663823],[139.6831347,35.6637727],[139.6828406,35.6633348],[139.6819606,35.6632686],[139.6818069,35.6627893],[139.6816986,35.6623696],[139.6813961,35.6611566],[139.6812937,35.660752],[139.681036,35.6597346],[139.6817234,35.6585116],[139.6815559,35.6586437],[139.6813536,35.6585253],[139.6814766,35.6580408],[139.6814618,35.6579626],[139.6813806,35.6579689],[139.6813236,35.6573295],[139.6813431,35.6570857],[139.6813627,35.6568435],[139.6813932,35.6566003],[139.6807794,35.6566208],[139.6807868,35.6569207],[139.680794,35.6569738],[139.6808776,35.6575924],[139.6808606,35.6576201],[139.6798737,35.6576947]]}',
 		'{"distance":0.018187142584226833,"body":[[139.6931389,35.6646286],[139.6932859,35.6644469],[139.6934109,35.6642613],[139.6937528,35.6637097],[139.6937887,35.6636517],[139.6938887,35.6635595],[139.693986,35.6634656],[139.694247,35.6632115],[139.6944539,35.6629995],[139.6940012,35.6630281],[139.6944418,35.6626633],[139.6948587,35.662351],[139.6949969,35.6631424],[139.6946282,35.6634624],[139.6944394,35.6633404],[139.694247,35.6632115],[139.6950967,35.6624813],[139.6948587,35.662351],[139.6943791,35.6620749],[139.6954929,35.6620961],[139.6952153,35.6619383],[139.6947274,35.6616611],[139.6940466,35.6623274],[139.6938506,35.6621681],[139.6938068,35.6618832],[139.6937529,35.6617154],[139.6934678,35.6615601],[139.6930796,35.6613531],[139.6928311,35.6611938],[139.6926183,35.6610874],[139.6924465,35.6609927],[139.6922927,35.6608996],[139.6921862,35.6608202],[139.6920321,35.6607393],[139.6919125,35.6606848],[139.6915852,35.6604793],[139.691146,35.6602386],[139.6907752,35.6600344],[139.6904777,35.6598719],[139.6920404,35.6592944],[139.6910115,35.6592459],[139.6909809,35.6592818],[139.6902284,35.6588517],[139.6909903,35.6578981],[139.6906797,35.6579183],[139.6905111,35.6578591],[139.6900561,35.6577924],[139.6907219,35.6581547],[139.6908679,35.6579352],[139.6909795,35.6577469],[139.6910567,35.6575168],[139.6911041,35.657217],[139.6910629,35.6569675]]}',
@@ -257,7 +253,7 @@ elsif @@sim_static_walk > 0
 		'{"distance":0.018257608377390613,"body":[[139.6937528,35.6637097],[139.6940382,35.6638301],[139.6942415,35.6639411],[139.6938878,35.6645051],[139.6939389,35.6643885],[139.6940336,35.6642217],[139.6941153,35.664101],[139.6942415,35.6639411],[139.6943122,35.6639118],[139.6944176,35.663787],[139.6948262,35.6629997],[139.6947611,35.6630593],[139.6946767,35.663134],[139.6944841,35.663303],[139.6944394,35.6633404],[139.6944032,35.6633706],[139.6942192,35.6635869],[139.6940382,35.6638301],[139.6939558,35.6639887],[139.6939151,35.6640723],[139.693885,35.6641479],[139.6938571,35.6642452],[139.6938532,35.6643312],[139.6938585,35.6644245],[139.6938448,35.6644695],[139.6938048,35.6645257],[139.6926221,35.6653829],[139.6925289,35.665405],[139.6922503,35.6654997],[139.6919497,35.6655884],[139.6919296,35.6655888],[139.6919096,35.6655834],[139.6918828,35.6655591],[139.6918718,35.6655354],[139.6918779,35.6655046],[139.6921135,35.6648534],[139.6916811,35.6647484],[139.6912541,35.6646385],[139.6907177,35.6645065],[139.6904745,35.6644384],[139.6898381,35.6642615],[139.6898945,35.6640858],[139.6899115,35.664032],[139.6899206,35.6639578],[139.6900109,35.6637591],[139.6913894,35.6634792],[139.6908733,35.6633239],[139.6897788,35.6636849],[139.6898588,35.6633368],[139.6898166,35.6631193],[139.6889769,35.6627329],[139.6883271,35.6623572],[139.6878298,35.6620812],[139.688165,35.661446],[139.6882114,35.6614759],[139.6888001,35.6618179],[139.6877693,35.6629801],[139.6880268,35.6626983],[139.6871559,35.6615218],[139.6873779,35.6614271],[139.6875089,35.6613612],[139.6874884,35.6626236],[139.6871668,35.6627292],[139.6863738,35.6629906],[139.6854802,35.6633045],[139.6846718,35.6635835],[139.6844567,35.6636552]]}',
 		'{"distance":0.019711842085533428,"body":[[139.6951325,35.6664073],[139.6965475,35.6669679],[139.6970021,35.6671387],[139.6958989,35.6681067],[139.6959161,35.668045],[139.6959273,35.6680046],[139.6965475,35.6669679],[139.6957726,35.6684739],[139.6958451,35.6684899],[139.6959265,35.6684972],[139.6960274,35.6684966],[139.6962123,35.668465],[139.6962816,35.6684533],[139.6963539,35.6684492],[139.6964324,35.6684525],[139.6964675,35.6684386],[139.6965645,35.6684389],[139.6973763,35.6684766],[139.6974129,35.6684913],[139.6993069,35.6686028],[139.6993576,35.6686112],[139.6994355,35.6686241],[139.6994902,35.6686252],[139.6995619,35.6686201],[139.6996255,35.66861],[139.6996945,35.6685949],[139.6997636,35.6685858],[139.6998423,35.6685865],[139.69991,35.668591],[139.6999683,35.6686013],[139.7000298,35.6686227],[139.700104,35.6686521],[139.7001597,35.6686727],[139.7002134,35.6686799],[139.7002788,35.6686799],[139.7003615,35.6686778],[139.7004284,35.6686773],[139.7005024,35.6686818],[139.7005694,35.6686919],[139.700626,35.6687042],[139.7007047,35.6687272],[139.7007869,35.668761],[139.701361,35.6690163],[139.7014249,35.6690416],[139.7018388,35.6688777],[139.7018986,35.668835],[139.7019063,35.6688129],[139.7018986,35.6687568],[139.7018069,35.6691845],[139.7019284,35.6689835],[139.7018388,35.6688777],[139.7018028,35.6689031],[139.7017808,35.6689047],[139.7016807,35.668862],[139.7014249,35.6690416],[139.7016221,35.6691235],[139.7019425,35.6692574],[139.7020111,35.6692864],[139.7021313,35.6693342],[139.7021949,35.669362],[139.7025925,35.6695277],[139.7026057,35.66955],[139.7026062,35.6695733],[139.7025736,35.6695932],[139.7024953,35.6696],[139.7022332,35.6696222],[139.7021949,35.669362],[139.7026062,35.6695733],[139.702613,35.6696547],[139.7026262,35.6697635],[139.7027402,35.6694139],[139.7022057,35.6691855],[139.7018069,35.6691845],[139.7016692,35.669129],[139.702122,35.6692456],[139.7020838,35.6691227],[139.7020256,35.6688892],[139.701985,35.6686247],[139.7019646,35.668492],[139.701905,35.6681222],[139.7017834,35.6667162],[139.7017504,35.6663592],[139.7016913,35.6659408],[139.7016496,35.6657309],[139.7014896,35.6650943],[139.7013834,35.6645524],[139.7013265,35.6640867],[139.7012617,35.6634825],[139.7012898,35.6633556]]}'
 	]
-	walk = JSON[test_data[@@sim_static_walk-1]]
+	walk = JSON[test_data[@@vars['sim_static_walk']-1]]
 else
 	url = 'http://localhost:4570/?lon=139.694345&lat=35.664641&length=2000'
 	resp = Net::HTTP.get_response(URI.parse(url))
@@ -275,12 +271,12 @@ puts "Got initial walk with #{walk['body'].length} points"
 # Inject intermediate points 
 # * 50m threshold, using Luis' magical number to convert degrees to meters
 thresh = 25.0/111110.0
-if (@@html_static_test and @@html_debug)
-	new_walk = JSON[test_data[@@html_static_test-1]]
-	old_walk = JSON[test_data[@@html_static_test-1]]
-elsif @@sim_static_walk > 0
-	new_walk = JSON[test_data[@@sim_static_walk-1]]
-	old_walk = JSON[test_data[@@sim_static_walk-1]]
+if (@@vars['html_static_test'] and @@vars['html_debug'])
+	new_walk = JSON[test_data[@@vars['html_static_test']-1]]
+	old_walk = JSON[test_data[@@vars['html_static_test']-1]]
+elsif @@vars['sim_static_walk'] > 0
+	new_walk = JSON[test_data[@@vars['sim_static_walk']-1]]
+	old_walk = JSON[test_data[@@vars['sim_static_walk']-1]]
 else
 	new_walk = JSON[resp.body]
 	old_walk = JSON[resp.body]
@@ -321,30 +317,30 @@ puts "Re-sampled new walk with #{walk['body'].length} points"
 puts "====================================================================="
 puts calculate_sim_stats(JSON[get_fences()],walk)
 
-# Test each of the @@geofence_test_id's
-for geo_id in @@geofence_test_id
+# Test each of the @@var['sim_geofence_test_id']'s
+for geo_id in @@vars['sim_geofence_test_id']
 
-	puts "_~^ Starting test for geofence #{@@geofence_ids[geo_id]} ^~_"
+	puts "_~^ Starting test for geofence #{@@vars['sim_geofence_ids'][geo_id]} ^~_"
 
 	# Initial request
 	make_req(walk['body'][0],geo_id)
 
 	# Cycle through all the points in the walk
 	for point in walk['body'] do
-		rgeo_point = @@factory.point(point[0],point[1])
+		rgeo_point = @@vars['factory'].point(point[0],point[1])
 		#puts rgeo_point
 
 		# For each polygon in the arriving list
 		# check if we already entered
-		for p in @@arriving_a do
+		for p in @@vars['arriving_a'] do
 			if rgeo_point.within?(p)
-				if @@inside.index(p) != nil
+				if @@vars['inside'].index(p) != nil
 					# Already detected inside, do nothing
 				else
-					puts ">>>>>> Arrived fence with radius #{@@radii[p]}! Making request ..." if @@sim_static_walk < 1
-					@@inside << p
-					#@@arriving_a.delete(p)
-					#@@radii.delete(p)
+					puts ">>>>>> Arrived fence with radius #{@@vars['radii'][p]}! Making request ..." if @@vars['sim_static_walk'] < 1
+					@@vars['inside'] << p
+					#@@vars['arriving_a'].delete(p)
+					#@@vars['radii'].delete(p)
 					# Make request
 					make_req(point,geo_id)
 				end
@@ -356,16 +352,16 @@ for geo_id in @@geofence_test_id
 
 		# For each polygon in the leaving list
 		# check if we already left
-		for p in @@leaving_a do
+		for p in @@vars['leaving_a'] do
 			if rgeo_point.within?(p)
 				# Do nothing
 				#puts "====== Still inside, doing nothing"
 			else
-				puts "<<<<<< Left fence with radius #{@@radii[p]}! Making request ..." if @@sim_static_walk < 1 
-				@@left_fence_radius += @@radii[p]
-				#@@leaving_a.delete(p)
-				#@@radii.delete(p)
-				@@inside = []
+				puts "<<<<<< Left fence with radius #{@@vars['radii'][p]}! Making request ..." if @@vars['sim_static_walk'] < 1 
+				@@vars['left_fence_radius'] += @@vars['radii'][p]
+				#@@vars['leaving_a'].delete(p)
+				#@@vars['radii'].delete(p)
+				@@vars['inside'] = []
 				# Make request
 				make_req(point,geo_id)
 			end
@@ -374,13 +370,13 @@ for geo_id in @@geofence_test_id
 
 	puts calculate_stats(JSON[get_fences()],walk,geo_id,false)
 
-	if (@@html_debug == true or @@html_static_test > 0)
+	if (@@vars['html_debug'] == true or @@vars['html_static_test'] > 0)
 		puts "====================================================================="
 		puts "Copy this into the public/demo.html file for testing."
 		puts " === test_fences:"
 		puts get_fences()
 		puts " === test_circlesRAW:"
-		puts @@html_debug_text.inspect.gsub('"{','{').gsub('}"','}').gsub('\"','"')
+		puts @@vars['html_debug_text'].inspect.gsub('"{','{').gsub('}"','}').gsub('\"','"')
 		puts " === fakeResponse:"
 		puts JSON[old_walk]
 	end
