@@ -47,7 +47,7 @@ require "rgeo"
 	# geofence_ids (which are in fact geo_object id's according to the JSON spec)
 	'sim_geofence_ids' => ['density_0_1', 'density_0_2', 'density_0_3', 'density_0_4', 'density_0_5', 'density_0_6', 'density_0_7', 'density_0_8', 'density_0_9', 'density_1_0'],
 	# list of geofence_ids to test
-	'sim_geofence_test_id' => [7]
+	'sim_geofence_test_id' => [9]
 }
 
 ######
@@ -196,8 +196,8 @@ def calculate_run_stats(fences,walk,geofence_id,global_stats)
 		puts "== Run stats"
 		puts " Number of requests: #{@@vars['request_counter']}
  Avg request size: #{@@vars['request_size']/@@vars['request_counter']}
- iOS black fence misses (#{@@vars['ios_distance_threshold']}): #{missed_fences_by_distance}
- Timed requests fence misses (#{@@vars['timed_requests_threshold']}): #{missed_fences_by_time}
+ iOS black fence misses (#{@@vars['ios_distance_threshold']}m): #{missed_fences_by_distance}
+ Timed requests fence misses (#{@@vars['timed_requests_threshold']}s): #{missed_fences_by_time}
  Energy used: #{}%
  Avg geofence radius: #{fence_radii*1.0/fence['shapes'].length}m
  Avg JSON leave fence radius: #{@@vars['left_fence_radius']/@@vars['request_counter']}m"
