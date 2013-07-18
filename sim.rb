@@ -36,19 +36,19 @@ require "rgeo"
 	'html_debug_aux_text' => [],
 	## Sim variables
 	# sim_static_walk >0 uses a static walk, =0 uses dynamic paths
-	'sim_static_walk' => 5,
+	'sim_static_walk' => 1,
 	# geofence_ids (which are in fact geo_object id's according to the JSON spec)
 	'sim_geofence_ids' => ['density_0_1', 'density_0_2', 'density_0_3', 'density_0_4', 'density_0_5', 'density_0_6', 'density_0_7', 'density_0_8', 'density_0_9', 'density_1_0'],
 	# list of geofence_ids to test
-	'sim_geofence_test_id' => [5]
+	'sim_geofence_test_id' => [9]
 }
 
 ######
 # OAuth setup for Geoluis
 ####
-KEY = "OSKDaID4Dalto3ONoNKkioqpRgtG2qj118tEjO9j"
-SECRET = "2V8vjEfUfpak6o8pfwXsabKM1jkIBFmdGaQBYkdJ"
-SITE = "http://geo.skillupjapan.net"
+KEY = "n5FkRe5yUbdOt9X38cxSBBvoojwmt1Qhyb60GzD2"
+SECRET = "8D3aAxZ2vYDoHQHTnrMzEvdASMmMQgXLH89wgYp6"
+SITE = "http://192.168.13.138:3000/"
 HEADERS = { 'Accepts' => 'application/json', 'Content-Type' => 'application/json' }
 consumer = OAuth::Consumer.new(KEY, SECRET, site: SITE, http_method: :get)
 @@vars['access_token'] = OAuth::AccessToken.new consumer
@@ -121,9 +121,13 @@ end
 # Method to calculate system stats
 def calculate_sim_stats(fences,walk)
 	time = (walk['distance']*111110.0).ceil/@@vars['walk_speed_ms']
+	path = "random"
+	path = @@vars['sim_static_walk'] if @@vars['sim_static_walk'] > 0
+
 	puts "====== System stats"
 	puts " Walked distance: #{(walk['distance']*111110.0).ceil}m
- Sim time: #{time}s (#{(time/60).floor}m#{(((time/60)-(time/60).floor)*60).floor}s)"
+ Sim time: #{time}s (#{(time/60).floor}m#{(((time/60)-(time/60).floor)*60).floor}s)
+ Using sim path: #{path}"
  return
 end
 
@@ -423,7 +427,7 @@ for geo_id in @@vars['sim_geofence_test_id']
 	calculate_fence_stats(JSON[get_fences()],walk,geo_id,false)
 	calculate_run_stats(JSON[get_fences()],walk,geo_id,false)
 
-	if @@vars['html_debug'] == true or @@vars['html_static_test'] > 0
+	if @@vars['html_debug'] == true
 		puts "====================================================================="
 		puts "Copy this into the public/demo.html file for testing."
 		puts " === test_fences:"
