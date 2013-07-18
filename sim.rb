@@ -16,6 +16,8 @@ require "rgeo"
 	'lon' => 139.694345,
 	'lat' => 35.664641,
 	'length' => 2000,
+	'timed_requests_threshold' => 120,
+	'ios_distance_threshold' => 300,
 	# Threshold to further divide arcs in smaller paths
 	# using Luis' magical number to convert degrees to meters
 	'walk_thresh' => 25.0/111110.0,
@@ -29,6 +31,14 @@ require "rgeo"
 	'request_counter' => 0,
 	'request_size' => 0,
 	'left_fence_radius' => 0,
+	# Counters and accs for misses
+	'prev_point' => nil,
+	'ellapsed_time' => 0,
+	'ellapsed_distance' => 0,
+	'missed_distance_shapes_ids' => [],
+	'missed_time_shapes_ids' => [],
+	'found_distance_shapes_ids' => [],
+	'found_time_shapes_ids' => [],
 	## Enable debug/verbose output
 	'html_debug' => false,
 	## Sim variables
@@ -37,7 +47,7 @@ require "rgeo"
 	# geofence_ids (which are in fact geo_object id's according to the JSON spec)
 	'sim_geofence_ids' => ['density_0_1', 'density_0_2', 'density_0_3', 'density_0_4', 'density_0_5', 'density_0_6', 'density_0_7', 'density_0_8', 'density_0_9', 'density_1_0'],
 	# list of geofence_ids to test
-	'sim_geofence_test_id' => [0,1,2,3,4,5,6,7,8,9]
+	'sim_geofence_test_id' => [7]
 }
 
 ######
@@ -175,15 +185,78 @@ def calculate_run_stats(fences,walk,geofence_id,global_stats)
 			end
 		end
 
+		@@vars['missed_distance_shapes_ids'].flatten!.uniq!
+		@@vars['missed_time_shapes_ids'].flatten!.uniq!
+		@@vars['found_distance_shapes_ids'].flatten!.uniq!
+		@@vars['found_time_shapes_ids'].flatten!.uniq!
+
+		missed_fences_by_distance = (@@vars['missed_distance_shapes_ids'] - @@vars['found_distance_shapes_ids']).count
+		missed_fences_by_time = (@@vars['missed_time_shapes_ids'] - @@vars['found_time_shapes_ids']).count
+
 		puts "== Run stats"
 		puts " Number of requests: #{@@vars['request_counter']}
  Avg request size: #{@@vars['request_size']/@@vars['request_counter']}
+ iOS black fence misses (#{@@vars['ios_distance_threshold']}): #{missed_fences_by_distance}
+ Timed requests fence misses (#{@@vars['timed_requests_threshold']}): #{missed_fences_by_time}
  Energy used: #{}%
  Avg geofence radius: #{fence_radii*1.0/fence['shapes'].length}m
  Avg JSON leave fence radius: #{@@vars['left_fence_radius']/@@vars['request_counter']}m"
 		puts "=========="
 	end
 	return
+end
+
+# Get shapes for current point
+def shapes_here(point,shapes)
+	local_shapes = []
+	for shape in shapes
+		if shape['type'] == 'circle'
+			# Generate polygon for circle
+	  		center = @@vars['factory'].point(shape['generators'][0][0],shape['generators'][0][1])
+	  		poly = center.buffer(shape['radius'])
+
+			if point.within?(poly)
+				local_shapes << shape['id']
+			end
+		end
+	end
+	return local_shapes
+end
+
+# Method to calculate fence misses from blackbox and timed request methods
+def calculate_misses (point,geo_id,shapes)
+	if @@vars['prev_point'] == nil
+		@@vars['prev_point'] = point
+		# We would make a request now, so we should discard the shapes as unknown
+		known_shapes = shapes_here(point,shapes)
+		@@vars['found_distance_shapes_ids'] << known_shapes
+		@@vars['found_time_shapes_ids'] << known_shapes
+		return
+	end
+
+	# If the distance is lower than ios_distance_threshold meters
+	if @@vars['ellapsed_distance'] < @@vars['ios_distance_threshold']
+		@@vars['ellapsed_distance'] += distance([@@vars['prev_point'].x(),@@vars['prev_point'].y()],[point.x(),point.y()])*111110
+		@@vars['missed_distance_shapes_ids'] << shapes_here(point,shapes)
+	else
+		@@vars['ellapsed_distance'] = 0
+		# We would make a request now, so we should discard the shapes as unknown
+		@@vars['found_distance_shapes_ids'] << shapes_here(point,shapes)
+		return
+	end
+
+	# If the ellapsed walk time is smaller than timed_requests_threshold seconds
+	if @@vars['ellapsed_time'] < @@vars['timed_requests_threshold']
+		@@vars['ellapsed_time'] += distance([@@vars['prev_point'].x(),@@vars['prev_point'].y()],[point.x(),point.y()])*111110*@@vars['walk_speed_ms']
+		@@vars['missed_time_shapes_ids'] << shapes_here(point,shapes)
+	else
+		@@vars['ellapsed_time'] = 0
+		# We would make a request now, so we should discard the shapes as unknown
+		@@vars['found_time_shapes_ids'] << shapes_here(point,shapes)
+		return
+	end
+
+	@@vars['prev_point'] = point
 end
 
 # Method to get the geofences
@@ -360,6 +433,16 @@ for geo_id in @@vars['sim_geofence_test_id']
 	@@vars['request_counter'] = 0
 	@@vars['request_size'] = 0
 	@@vars['left_fence_radius'] = 0
+	@@vars['ellapsed_distance'] = 0
+	@@vars['ellapsed_time'] = 0
+
+	# Init arrays
+	@@vars['missed_distance_shapes_ids'] = []
+	@@vars['missed_time_shapes_ids'] = []
+	@@vars['found_distance_shapes_ids'] = []
+	@@vars['found_time_shapes_ids'] = []
+
+	geoid_fences = JSON[get_fences(geo_id).inspect.gsub('"{','{').gsub('}"','}').gsub('\"','"')][0]
 
 	# Initial request
 	make_req(walk['body'][0],geo_id)
@@ -368,6 +451,9 @@ for geo_id in @@vars['sim_geofence_test_id']
 	for point in walk['body'] do
 		rgeo_point = @@vars['factory'].point(point[0],point[1])
 		#puts rgeo_point
+
+		# Calculate fence misses on methods other than SUJ Geo
+		calculate_misses(rgeo_point,geo_id,geoid_fences['shapes'])
 
 		# For each polygon in the arriving list
 		# check if we already entered
