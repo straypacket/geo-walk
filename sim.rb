@@ -17,7 +17,7 @@ require "rgeo"
 	'factory' => RGeo::Geographic.simple_mercator_factory( :buffer_resolution => 4),
 	'lon' => 139.694345,
 	'lat' => 35.664641,
-	'length' => 2000,
+	'length' => 50000,
 	'timed_requests_threshold' => 270,
 	'ios_distance_threshold' => 360,
 	# Threshold to further divide arcs in smaller paths
@@ -60,15 +60,15 @@ require "rgeo"
 	# geofence_ids (which are in fact geo_object id's according to the JSON spec)
 	'sim_geofence_ids' => ['density_0_1', 'density_0_2', 'density_0_3', 'density_0_4', 'density_0_5', 'density_0_6', 'density_0_7', 'density_0_8', 'density_0_9', 'density_1_0'],
 	# list of geofence_ids to test
-	'sim_geofence_test_id' => [0,1,2,3,4,5,6,7,8,9],
+	'sim_geofence_test_id' => [9],
 	'sim_repetitions' => 99
 }
 
 ######
 # OAuth setup for Geoluis
 ####
-KEY = "n5FkRe5yUbdOt9X38cxSBBvoojwmt1Qhyb60GzD2"
-SECRET = "8D3aAxZ2vYDoHQHTnrMzEvdASMmMQgXLH89wgYp6"
+KEY = "XZJX2HZZEmFPvbfXTLOXXaaUXp1GIHMKzUtkFYZR"
+SECRET = "8lkoo3jnitkik7tRwy90udThhlm61h5mE6ttQWCL"
 SITE = "http://192.168.13.138:3000/"
 HEADERS = { 'Accepts' => 'application/json', 'Content-Type' => 'application/json' }
 consumer = OAuth::Consumer.new(KEY, SECRET, site: SITE, http_method: :get)
@@ -98,13 +98,16 @@ end
 
 ######
 # Uncomment to only get walk paths
-# for i in 90.times do
-# 	url = "http://localhost:4570/?lon=#{@@vars['lon']}&lat=#{@@vars['lat']}&length=#{@@vars['length']}"
-# 	resp = Net::HTTP.get_response(URI.parse(url))
-# 	walk = JSON[resp.body]
-# 	puts resp.body
-# end
-# return
+for i in 90.times do
+	url = "http://localhost:4570/?lon=#{@@vars['lon']}&lat=#{@@vars['lat']}&length=#{@@vars['length']}"
+	uri = URI.parse(url)
+	http = Net::HTTP.new("localhost", 4570)
+	http.read_timeout = nil
+	resp = http.request(Net::HTTP::Get.new(uri.request_uri))
+	walk = JSON[resp.body]
+	puts resp.body
+end
+return
 ######
 
 
