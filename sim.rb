@@ -98,16 +98,16 @@ end
 
 ######
 # Uncomment to only get walk paths
-for i in 90.times do
-	url = "http://localhost:4570/?lon=#{@@vars['lon']}&lat=#{@@vars['lat']}&length=#{@@vars['length']}"
-	uri = URI.parse(url)
-	http = Net::HTTP.new("localhost", 4570)
-	http.read_timeout = nil
-	resp = http.request(Net::HTTP::Get.new(uri.request_uri))
-	walk = JSON[resp.body]
-	puts resp.body
-end
-return
+# for i in 90.times do
+# 	url = "http://localhost:4570/?lon=#{@@vars['lon']}&lat=#{@@vars['lat']}&length=#{@@vars['length']}"
+# 	uri = URI.parse(url)
+# 	http = Net::HTTP.new("localhost", 4570)
+# 	http.read_timeout = nil
+# 	resp = http.request(Net::HTTP::Get.new(uri.request_uri))
+# 	walk = JSON[resp.body]
+# 	puts resp.body
+# end
+# return
 ######
 
 
