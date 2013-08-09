@@ -61,7 +61,7 @@ require "rgeo"
 	'sim_geofence_ids' => ['density_0_1', 'density_0_2', 'density_0_3', 'density_0_4', 'density_0_5', 'density_0_6', 'density_0_7', 'density_0_8', 'density_0_9', 'density_1_0'],
 	# list of geofence_ids to test
 	'sim_geofence_test_id' => [0,1,2,3,4,5,6,7,8,9],
-	'sim_repetitions' => 99
+	'sim_repetitions' => 1
 }
 
 ######
@@ -442,7 +442,7 @@ def get_walk(*args)
 
 	if path_num > 0
 		# This side loads the JSON with the walks
-		require('./walks_2000m.rb')
+		require("./walks_#{@@vars['length']}m.rb")
 		walk = JSON[@@test_data[path_num-1]]
 		new_walk = JSON[@@test_data[path_num-1]]
 	else
