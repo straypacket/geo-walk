@@ -17,9 +17,9 @@ require "rgeo"
 	'factory' => RGeo::Geographic.simple_mercator_factory( :buffer_resolution => 4),
 	'lon' => 139.694345,
 	'lat' => 35.664641,
-	'length' => 2000,
-	'timed_requests_threshold' => 270,
-	'ios_distance_threshold' => 360,
+	'length' => 25000,
+	'timed_requests_threshold' => 90,
+	'ios_distance_threshold' => 120,
 	# Threshold to further divide arcs in smaller paths
 	# using Luis' magical number to convert degrees to meters
 	'walk_thresh' => 25.0/111110.0,
@@ -55,13 +55,15 @@ require "rgeo"
 	'html_debug' => false,
 	'show_intermediate_countings' => false,
 	## Sim variables
-	# sim_static_walk >0 uses a static walk, =0 uses dynamic paths
+	# sim_static_walk > 0 uses static paths, =0 uses dynamic paths
+	# the number of the chosen path is the 'sim_repetitions' value
+	# Tho chose this exact path number, change the parameter in the get_walk() call
 	'sim_static_walk' => 1,
 	# geofence_ids (which are in fact geo_object id's according to the JSON spec)
 	'sim_geofence_ids' => ['density_0_1', 'density_0_2', 'density_0_3', 'density_0_4', 'density_0_5', 'density_0_6', 'density_0_7', 'density_0_8', 'density_0_9', 'density_1_0'],
 	# list of geofence_ids to test
 	'sim_geofence_test_id' => [0,1,2,3,4,5,6,7,8,9],
-	'sim_repetitions' => 1
+	'sim_repetitions' => 99
 }
 
 ######
@@ -209,12 +211,11 @@ def calculate_density_stats(fences,geofence_id)
 		puts " Name: #{fence['name']}
  id: #{fence['foreign_id']}
  Number of polygons: #{fence['shapes'].length}
- Area: #{fence['area']} km^2
- BBox area: #{bbox_area} km^2
+ Simulation area: #{bbox_area} km^2
  Density: #{fence['area']/bbox_area}
  Avg Shape area: #{(fence['area']/fence['shapes'].length)} km^2
- Timed request threshold: #{@@vars['timed_requests_threshold']}s
- iOS blackbox threshold: #{@@vars['ios_distance_threshold']}m"
+ Timed request threshold: #{@@vars['timed_requests_threshold']} s
+ iOS blackbox threshold: #{@@vars['ios_distance_threshold']} m"
 	end
 	return
 end
@@ -244,11 +245,11 @@ def calculate_run_stats(fences,walk,geofence_id,global_stats)
 		puts "== Run stats" if @@vars['show_intermediate_countings']
 		puts " Number of requests: #{@@vars['request_counter']}
  # of fences walked into: #{@@vars['walked_into_fences']}
- Avg request size: #{@@vars['request_size']/@@vars['request_counter']}
+ Avg request size: #{@@vars['request_size']/@@vars['request_counter']} bytes
  iOS black fence misses (#{@@vars['ios_distance_threshold']}m): #{missed_fences_by_distance}
  Timed requests fence misses (#{@@vars['timed_requests_threshold']}s): #{missed_fences_by_time}
- Avg geofence radius: #{fence_radii*1.0/fence['shapes'].length}m
- Avg JSON leave fence radius: #{@@vars['left_fence_radius']/@@vars['request_counter']}m" if @@vars['show_intermediate_countings']
+ Avg geofence radius: #{fence_radii*1.0/fence['shapes'].length} m
+ Avg JSON leave fence radius: #{@@vars['left_fence_radius']/@@vars['request_counter']} m" if @@vars['show_intermediate_countings']
 		puts "==========" if @@vars['show_intermediate_countings']
 
 		# Add to total accumulators
@@ -266,7 +267,7 @@ end
 def show_average_stats()
 	time = @@vars['total_sim_time']/@@vars['sim_repetitions']
 	#Print averages
-	puts " Total walked distance: #{@@vars['total_walked_distance']/@@vars['sim_repetitions']}m
+	puts " Total walked distance: #{@@vars['total_walked_distance']/@@vars['sim_repetitions']} m
  Total sim time: #{time}s (#{(time/60).floor}m#{(((time/60)-(time/60).floor)*60).floor}s)
  ====
  Total avg number of requests: #{@@vars['total_request_counter']*1.0/@@vars['sim_repetitions']}
@@ -274,8 +275,8 @@ def show_average_stats()
  Total avg request size: #{@@vars['total_request_size']*1.0/@@vars['sim_repetitions']}
  Total avg iOS black fence misses (#{@@vars['ios_distance_threshold']}m): #{@@vars['total_missed_distance_shapes']*1.0/@@vars['sim_repetitions']}
  Total avg timed requests fence misses (#{@@vars['timed_requests_threshold']}s): #{@@vars['total_missed_time_shapes']*1.0/@@vars['sim_repetitions']}
- Total avg geofence radius: #{@@vars['total_geofence_radius']*1.0/@@vars['sim_repetitions']}m
- Total avg JSON leave fence radius: #{@@vars['total_left_fence_radius']*1.0/@@vars['sim_repetitions']}m"
+ Total avg geofence radius: #{@@vars['total_geofence_radius']*1.0/@@vars['sim_repetitions']} m
+ Total avg JSON leave fence radius: #{@@vars['total_left_fence_radius']*1.0/@@vars['sim_repetitions']} m"
 
 	# Erase counters
 	@@vars['total_walked_distance'] = 0
@@ -504,6 +505,7 @@ for geo_id in @@vars['sim_geofence_test_id']
 	for w in @@vars['sim_repetitions'].times do
 
 		puts "\n_~^ Starting test with path #{w} ^~_" if @@vars['show_intermediate_countings']
+		print "." if !@@vars['show_intermediate_countings']
 
 		# This will iteratively chose a different path[w] from the static paths array
 		# If you need to have the same path drawn (w times) use get_walk() with no argument
@@ -589,7 +591,7 @@ for geo_id in @@vars['sim_geofence_test_id']
 			puts JSON[original_walk]
 		end
 	end
-	puts "========="
+	puts "=========" if @@vars['show_intermediate_countings']
 	puts "_~^ Finished tests for geofence #{@@vars['sim_geofence_ids'][geo_id]} ^~_"
 	show_average_stats()
 	puts "========="
