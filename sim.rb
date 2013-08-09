@@ -61,7 +61,7 @@ require "rgeo"
 	'sim_geofence_ids' => ['density_0_1', 'density_0_2', 'density_0_3', 'density_0_4', 'density_0_5', 'density_0_6', 'density_0_7', 'density_0_8', 'density_0_9', 'density_1_0'],
 	# list of geofence_ids to test
 	'sim_geofence_test_id' => [9],
-	'sim_repetitions' => 99
+	'sim_repetitions' => 70
 }
 
 ######
@@ -98,16 +98,16 @@ end
 
 ######
 # Uncomment to only get walk paths
-# for i in 90.times do
-# 	url = "http://localhost:4570/?lon=#{@@vars['lon']}&lat=#{@@vars['lat']}&length=#{@@vars['length']}"
-# 	uri = URI.parse(url)
-# 	http = Net::HTTP.new("localhost", 4570)
-# 	http.read_timeout = nil
-# 	resp = http.request(Net::HTTP::Get.new(uri.request_uri))
-# 	walk = JSON[resp.body]
-# 	puts resp.body
-# end
-# return
+for i in 90.times do
+	url = "http://localhost:4570/?lon=#{@@vars['lon']}&lat=#{@@vars['lat']}&length=#{@@vars['length']}"
+	uri = URI.parse(url)
+	http = Net::HTTP.new("localhost", 4570)
+	http.read_timeout = nil
+	resp = http.request(Net::HTTP::Get.new(uri.request_uri))
+	walk = JSON[resp.body]
+	puts resp.body
+end
+return
 ######
 
 
@@ -176,7 +176,10 @@ def calculate_density_stats(fences,geofence_id)
 		next if fence['foreign_id'] != fences[geofence_id]['foreign_id']
 
 		points = []
+		avg_shape_area = 0
 		for shape in fence['shapes']
+			avg_shape_area += shape['area']
+			puts shape['area']
 			points << @@vars['factory'].point(shape['nw_corner'][0],shape['nw_corner'][1])
 			points << @@vars['factory'].point(shape['se_corner'][0],shape['se_corner'][1])
 		end
@@ -199,9 +202,10 @@ def calculate_density_stats(fences,geofence_id)
 		puts " Name: #{fence['name']}
  id: #{fence['foreign_id']}
  Number of polygons: #{fence['shapes'].length}
- Area: #{fence['area']}
- BBox area: #{bbox_area}
+ Area: #{fence['area']} km^2
+ BBox area: #{bbox_area} mk^2
  Density: #{fence['area']/bbox_area}
+ Avg Shape area: #{(avg_shape_area/fence['shapes'].length)} km^2
  Timed request threshold: #{@@vars['timed_requests_threshold']}s
  iOS blackbox threshold: #{@@vars['ios_distance_threshold']}m"
 	end
