@@ -115,39 +115,6 @@ return
 # Define auxiliar methods
 ####
 
-# Luisian algorithm to calculate area
-def calculate_area_and_centroid(points)
-	n = points.size.to_i
-	area_sum = 0.0; cx_sum = 0.0; cy_sum = 0.0
-
-	for i in 0..n-1
-	  x0 = points[i%n][0]
-	  y1 = points[(i+1)%n][1]
-	  x1 = points[(i+1)%n][0]
-	  y0 = points[i%n][1]
-
-	  factor = x0*y1 - x1*y0
-	  area_sum += factor
-	  cx_sum   += factor * (x0 + x1)
-	  cy_sum   += factor * (y0 + y1)
-	end
-
-	if points.size > 1
-	  factor = 3 * area_sum
-
-	  cx_sum /= factor
-	  cy_sum /= factor
-	else
-	  cx_sum, cy_sum = points.first
-	end
-	area_sum *= 0.5
-
-	area = (111*90*area_sum).abs
-	centroid = [cx_sum, cy_sum]
-
-	return area
-end
-
 # Method to calculate distance between points
 # * update with a more geographically correct version
 def distance(x,y)
@@ -175,10 +142,11 @@ def calculate_density_stats(fences,geofence_id)
 	for fence in fences
 		next if fence['foreign_id'] != fences[geofence_id]['foreign_id']
 
+		# Create a fake polygon with the bounding boxes of the existing polygons
+		# We will use this polygon to create the fence bounding box
+		# And use it to calculate the working area
 		points = []
-		avg_shape_area = 0
 		for shape in fence['shapes']
-			avg_shape_area += shape['area']
 			points << @@vars['factory'].point(shape['nw_corner'][0],shape['nw_corner'][1])
 			points << @@vars['factory'].point(shape['se_corner'][0],shape['se_corner'][1])
 		end
@@ -188,23 +156,30 @@ def calculate_density_stats(fences,geofence_id)
 			exit
 		end
 
-		# A ring has to have 3 points, let's create a fake point in the middle
+		# A ring has to have 3 points, let's create a fake point in the middle when we only have two points
 		if points.length <= 2
 			points << @@vars['factory'].point((points[0].x()+points[1].x())/2,(points[0].y()+points[1].y())/2)
 		end
 
+		# Create fake polygon with working area
 		linearring = @@vars['factory'].linear_ring(points)
 		geom = @@vars['factory'].polygon(linearring)
+
+		# Create bounding box of the working area from the fake polygon
 		bbox = RGeo::Cartesian::BoundingBox.create_from_geometry(geom)
+
+		# Make a polygon from the bounding box so we can calculate the area
+		bboxpoly = @@vars['factory'].polygon(@@vars['factory'].linear_ring([@@vars['factory'].point(bbox.min_x(),bbox.max_y()),@@vars['factory'].point(bbox.max_x(),bbox.max_y()),@@vars['factory'].point(bbox.max_x(),bbox.min_y()),@@vars['factory'].point(bbox.min_x(),bbox.min_y())]))
+		bbox_area = bboxpoly.area/1000**2
+
 		puts "==== Density stats"
-		bbox_area = calculate_area_and_centroid([[bbox.min_x(),bbox.max_y()],[bbox.max_x(),bbox.max_y()],[bbox.max_x(),bbox.min_y()],[bbox.min_x(),bbox.min_y()]])
 		puts " Name: #{fence['name']}
  id: #{fence['foreign_id']}
  Number of polygons: #{fence['shapes'].length}
  Area: #{fence['area']} km^2
- BBox area: #{bbox_area} mk^2
+ BBox area: #{bbox_area} km^2
  Density: #{fence['area']/bbox_area}
- Avg Shape area: #{(avg_shape_area/fence['shapes'].length)} km^2
+ Avg Shape area: #{(fence['area']/fence['shapes'].length)} km^2
  Timed request threshold: #{@@vars['timed_requests_threshold']}s
  iOS blackbox threshold: #{@@vars['ios_distance_threshold']}m"
 	end
