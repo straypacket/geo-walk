@@ -17,7 +17,7 @@ require "rgeo"
 	'factory' => RGeo::Geographic.simple_mercator_factory( :buffer_resolution => 4),
 	'lon' => 139.694345,
 	'lat' => 35.664641,
-	'length' => 50000,
+	'length' => 25000,
 	'timed_requests_threshold' => 270,
 	'ios_distance_threshold' => 360,
 	# Threshold to further divide arcs in smaller paths
@@ -98,16 +98,16 @@ end
 
 ######
 # Uncomment to only get walk paths
-# for i in 90.times do
-# 	url = "http://localhost:4570/?lon=#{@@vars['lon']}&lat=#{@@vars['lat']}&length=#{@@vars['length']}"
-# 	uri = URI.parse(url)
-# 	http = Net::HTTP.new("localhost", 4570)
-# 	http.read_timeout = nil
-# 	resp = http.request(Net::HTTP::Get.new(uri.request_uri))
-# 	walk = JSON[resp.body]
-# 	puts resp.body
-# end
-# return
+for i in 90.times do
+	url = "http://localhost:4570/?lon=#{@@vars['lon']}&lat=#{@@vars['lat']}&length=#{@@vars['length']}"
+	uri = URI.parse(url)
+	http = Net::HTTP.new("localhost", 4570)
+	http.read_timeout = nil
+	resp = http.request(Net::HTTP::Get.new(uri.request_uri))
+	walk = JSON[resp.body]
+	puts resp.body
+end
+return
 ######
 
 
@@ -179,6 +179,11 @@ def calculate_density_stats(fences,geofence_id)
 		for shape in fence['shapes']
 			points << @@vars['factory'].point(shape['nw_corner'][0],shape['nw_corner'][1])
 			points << @@vars['factory'].point(shape['se_corner'][0],shape['se_corner'][1])
+		end
+
+		if points[0] == nil
+			puts "Error: No polygons in this geofence!"
+			exit
 		end
 
 		# A ring has to have 3 points, let's create a fake point in the middle
