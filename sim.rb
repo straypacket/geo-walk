@@ -179,7 +179,6 @@ def calculate_density_stats(fences,geofence_id)
 		avg_shape_area = 0
 		for shape in fence['shapes']
 			avg_shape_area += shape['area']
-			puts shape['area']
 			points << @@vars['factory'].point(shape['nw_corner'][0],shape['nw_corner'][1])
 			points << @@vars['factory'].point(shape['se_corner'][0],shape['se_corner'][1])
 		end
