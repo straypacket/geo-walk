@@ -62,8 +62,8 @@ require "rgeo"
 	# geofence_ids (which are in fact geo_object id's according to the JSON spec)
 	'sim_geofence_ids' => ['density_0_1', 'density_0_2', 'density_0_3', 'density_0_4', 'density_0_5', 'density_0_6', 'density_0_7', 'density_0_8', 'density_0_9', 'density_1_0'],
 	# list of geofence_ids to test
-	'sim_geofence_test_id' => [0,1,2,3,4,5,6,7,8,9],
-	'sim_repetitions' => 99
+	'sim_geofence_test_id' => [7,8,9],
+	'sim_repetitions' => 9
 }
 
 ######
@@ -299,6 +299,18 @@ def shapes_here(point,shapes)
 			# Generate polygon for circle
 	  		center = @@vars['factory'].point(shape['generators'][0][0],shape['generators'][0][1])
 	  		poly = center.buffer(shape['radius'])
+
+			if point.within?(poly)
+				local_shapes << shape['id']
+			end
+		elsif shape['type'] == 'polygon'
+			# Generate polygon from points
+			gen_points = []
+			for p in shape['generators']
+				gen_points << @@vars['factory'].point(p[0],p[1])
+			end
+			ring = @@vars['factory'].linear_ring(gen_points)
+			poly = @@vars['factory'].polygon(ring)
 
 			if point.within?(poly)
 				local_shapes << shape['id']
