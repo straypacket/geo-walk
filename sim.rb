@@ -18,8 +18,8 @@ require "rgeo"
 	'lon' => 139.694345,
 	'lat' => 35.664641,
 	'length' => 25000,
-	'timed_requests_threshold' => 90,
-	'ios_distance_threshold' => 120,
+	'timed_requests_threshold' => 25,
+	'ios_distance_threshold' => 35,
 	# Threshold to further divide arcs in smaller paths
 	# using Luis' magical number to convert degrees to meters
 	'walk_thresh' => 25.0/111110.0,
@@ -62,8 +62,8 @@ require "rgeo"
 	# geofence_ids (which are in fact geo_object id's according to the JSON spec)
 	'sim_geofence_ids' => ['density_0_1', 'density_0_2', 'density_0_3', 'density_0_4', 'density_0_5', 'density_0_6', 'density_0_7', 'density_0_8', 'density_0_9', 'density_1_0'],
 	# list of geofence_ids to test
-	'sim_geofence_test_id' => [7,8,9],
-	'sim_repetitions' => 9
+	'sim_geofence_test_id' => [0,1,2,3,4,5,6,7,8,9],
+	'sim_repetitions' => 10
 }
 
 ######
@@ -358,10 +358,6 @@ def get_fences(*args)
 	fences = @@vars['access_token'].request(:get, "/api/v3/geo_fences", HEADERS)
 	result = nil
 	if args.length > 0
-		# Uncomment if other shapes than circles
-		#result = [JSON[fences.body][args[0]].to_json]
-
-		# Since we're only using circles for now, we don't need the points, only the generators
 		aux = JSON[fences.body][args[0]]
 		for i in aux['shapes']
 			i['points'] = []
@@ -429,6 +425,8 @@ def make_req(point,geofence_id)
   				@@vars['arriving_a'] << poly
   				@@vars['radii'][poly] = fence['radius']
   			end
+	  	else
+	  		puts "ERROR! The returned fences should only be circles!"
 	  	end
 	  	#puts poly
 	  end
