@@ -8,6 +8,9 @@ require "rgeo"
 # Define system variables
 ####
 
+$stdout.reopen("console.out", "w")
+$stdout.sync = true
+
 @@vars = {
 	#'walk_speed_kmh' => 4.0+rand()*2,
 	'walk_speed_kmh' => 5.0,
@@ -18,8 +21,9 @@ require "rgeo"
 	'lon' => 139.694345,
 	'lat' => 35.664641,
 	'length' => 25000,
-	'timed_requests_threshold' => 25,
-	'ios_distance_threshold' => 35,
+	'timed_requests_threshold' => [25,90,270,810],
+	'ios_distance_threshold' => [35,120,360,1080],
+	'thresh_combo_counter' => 0,
 	# Threshold to further divide arcs in smaller paths
 	# using Luis' magical number to convert degrees to meters
 	'walk_thresh' => 25.0/111110.0,
@@ -57,13 +61,13 @@ require "rgeo"
 	## Sim variables
 	# sim_static_walk > 0 uses static paths, =0 uses dynamic paths
 	# the number of the chosen path is the 'sim_repetitions' value
-	# Tho chose this exact path number, change the parameter in the get_walk() call
+	# To chose this exact path number, change the parameter in the get_walk() call
 	'sim_static_walk' => 1,
 	# geofence_ids (which are in fact geo_object id's according to the JSON spec)
 	'sim_geofence_ids' => ['density_0_1', 'density_0_2', 'density_0_3', 'density_0_4', 'density_0_5', 'density_0_6', 'density_0_7', 'density_0_8', 'density_0_9', 'density_1_0'],
 	# list of geofence_ids to test
 	'sim_geofence_test_id' => [0,1,2,3,4,5,6,7,8,9],
-	'sim_repetitions' => 10
+	'sim_repetitions' => 9
 }
 
 ######
@@ -214,8 +218,8 @@ def calculate_density_stats(fences,geofence_id)
  Simulation area: #{bbox_area} km^2
  Density: #{fence['area']/bbox_area}
  Avg Shape area: #{(fence['area']/fence['shapes'].length)} km^2
- Timed request threshold: #{@@vars['timed_requests_threshold']} s
- iOS blackbox threshold: #{@@vars['ios_distance_threshold']} m"
+ Timed request threshold: #{@@vars['timed_requests_threshold'][@@vars['thresh_combo_counter']]} s
+ iOS blackbox threshold: #{@@vars['ios_distance_threshold'][@@vars['thresh_combo_counter']]} m"
 	end
 	return
 end
@@ -246,8 +250,8 @@ def calculate_run_stats(fences,walk,geofence_id,global_stats)
 		puts " Number of requests: #{@@vars['request_counter']}
  # of fences walked into: #{@@vars['walked_into_fences']}
  Avg request size: #{@@vars['request_size']/@@vars['request_counter']} bytes
- iOS black fence misses (#{@@vars['ios_distance_threshold']}m): #{missed_fences_by_distance}
- Timed requests fence misses (#{@@vars['timed_requests_threshold']}s): #{missed_fences_by_time}
+ iOS black fence misses (#{@@vars['ios_distance_threshold'][@@vars['thresh_combo_counter']]}m): #{missed_fences_by_distance}
+ Timed requests fence misses (#{@@vars['timed_requests_threshold'][@@vars['thresh_combo_counter']]}s): #{missed_fences_by_time}
  Avg geofence radius: #{fence_radii*1.0/fence['shapes'].length} m
  Avg JSON leave fence radius: #{@@vars['left_fence_radius']/@@vars['request_counter']} m" if @@vars['show_intermediate_countings']
 		puts "==========" if @@vars['show_intermediate_countings']
@@ -273,8 +277,8 @@ def show_average_stats()
  Total avg number of requests: #{@@vars['total_request_counter']*1.0/@@vars['sim_repetitions']}
  Total avg # of fences walked into: #{@@vars['total_walked_into_fences']*1.0/@@vars['sim_repetitions']}
  Total avg request size: #{@@vars['total_request_size']*1.0/@@vars['sim_repetitions']}
- Total avg iOS black fence misses (#{@@vars['ios_distance_threshold']}m): #{@@vars['total_missed_distance_shapes']*1.0/@@vars['sim_repetitions']}
- Total avg timed requests fence misses (#{@@vars['timed_requests_threshold']}s): #{@@vars['total_missed_time_shapes']*1.0/@@vars['sim_repetitions']}
+ Total avg iOS black fence misses (#{@@vars['ios_distance_threshold'][@@vars['thresh_combo_counter']]}m): #{@@vars['total_missed_distance_shapes']*1.0/@@vars['sim_repetitions']}
+ Total avg timed requests fence misses (#{@@vars['timed_requests_threshold'][@@vars['thresh_combo_counter']]}s): #{@@vars['total_missed_time_shapes']*1.0/@@vars['sim_repetitions']}
  Total avg geofence radius: #{@@vars['total_geofence_radius']*1.0/@@vars['sim_repetitions']} m
  Total avg JSON leave fence radius: #{@@vars['total_left_fence_radius']*1.0/@@vars['sim_repetitions']} m"
 
@@ -331,7 +335,7 @@ def calculate_misses (point,geo_id,shapes)
 	end
 
 	# If the distance is lower than ios_distance_threshold meters
-	if @@vars['ellapsed_distance'] < @@vars['ios_distance_threshold']
+	if @@vars['ellapsed_distance'] < @@vars['ios_distance_threshold'][@@vars['thresh_combo_counter']]
 		@@vars['ellapsed_distance'] += distance([@@vars['prev_point'].x(),@@vars['prev_point'].y()],[point.x(),point.y()])*111110
 		@@vars['missed_distance_shapes_ids'] << shapes_here(point,shapes)
 	else
@@ -341,8 +345,8 @@ def calculate_misses (point,geo_id,shapes)
 	end
 
 	# If the ellapsed walk time is smaller than timed_requests_threshold seconds
-	if @@vars['ellapsed_time'] < @@vars['timed_requests_threshold']
-		@@vars['ellapsed_time'] += distance([@@vars['prev_point'].x(),@@vars['prev_point'].y()],[point.x(),point.y()])*111110*@@vars['walk_speed_ms']
+	if @@vars['ellapsed_time'] < @@vars['timed_requests_threshold'][@@vars['thresh_combo_counter']]
+		@@vars['ellapsed_time'] += distance([@@vars['prev_point'].x(),@@vars['prev_point'].y()],[point.x(),point.y()])*111110/@@vars['walk_speed_ms']
 		@@vars['missed_time_shapes_ids'] << shapes_here(point,shapes)
 	else
 		@@vars['ellapsed_time'] = 0
@@ -451,7 +455,7 @@ def get_walk(*args)
 		path_num = @@vars['sim_static_walk']
 	end
 
-	if path_num > 0
+	if args.length > 0
 		# This side loads the JSON with the walks
 		require("./walks_#{@@vars['length']}m.rb")
 		walk = JSON[@@test_data[path_num-1]]
@@ -506,103 +510,108 @@ end
 # Simulate
 ####
 
-# Test each of the @@var['sim_geofence_test_id']'s
-for geo_id in @@vars['sim_geofence_test_id']
+# Test each of the timed_requests_threshold/distance_requests_threshold combos
+for thresh_combo in @@vars['timed_requests_threshold'].count.times do
+	@@vars['thresh_combo_counter'] = thresh_combo
 
-	puts "\n_~^ Starting tests for geofence #{@@vars['sim_geofence_ids'][geo_id]} ^~_"
-	calculate_density_stats(JSON[get_fences()],geo_id)
+	# Test each of the @@var['sim_geofence_test_id']'s
+	for geo_id in @@vars['sim_geofence_test_id']
 
-	for w in @@vars['sim_repetitions'].times do
+		puts "\n_~^ Starting tests for geofence #{@@vars['sim_geofence_ids'][geo_id]} #{@@vars['walk_speed_kmh']}km/h #{@@vars['timed_requests_threshold'][@@vars['thresh_combo_counter']]}s #{@@vars['ios_distance_threshold'][@@vars['thresh_combo_counter']]}m ^~_"
+		calculate_density_stats(JSON[get_fences()],geo_id)
 
-		puts "\n_~^ Starting test with path #{w} ^~_" if @@vars['show_intermediate_countings']
-		print "." if !@@vars['show_intermediate_countings']
+		for w in @@vars['sim_repetitions'].times do
 
-		# This will iteratively chose a different path[w] from the static paths array
-		# If you need to have the same path drawn (w times) use get_walk() with no argument
-		walk, original_walk = get_walk(w)
+			puts "\n_~^ Starting test with path #{w} ^~_" if @@vars['show_intermediate_countings']
+			print "." if !@@vars['show_intermediate_countings']
 
-		# Init counters
-		@@vars['request_counter'] = 0
-		@@vars['request_size'] = 0
-		@@vars['left_fence_radius'] = 0
-		@@vars['ellapsed_distance'] = 0
-		@@vars['ellapsed_time'] = 0
-		@@vars['walked_into_fences'] = 0
+			# This will iteratively chose a different path[w] from the static paths array
+			# If you need to have the same path drawn (w times) use get_walk() with no argument
+			walk, original_walk = get_walk(w+1)
 
-		# Init arrays
-		@@vars['missed_distance_shapes_ids'] = []
-		@@vars['missed_time_shapes_ids'] = []
-		@@vars['found_distance_shapes_ids'] = []
-		@@vars['found_time_shapes_ids'] = []
+			# Init counters
+			@@vars['request_counter'] = 0
+			@@vars['request_size'] = 0
+			@@vars['left_fence_radius'] = 0
+			@@vars['ellapsed_distance'] = 0
+			@@vars['ellapsed_time'] = 0
+			@@vars['walked_into_fences'] = 0
 
-		geoid_fences = JSON[get_fences(geo_id).inspect.gsub('"{','{').gsub('}"','}').gsub('\"','"')][0]
+			# Init arrays
+			@@vars['missed_distance_shapes_ids'] = []
+			@@vars['missed_time_shapes_ids'] = []
+			@@vars['found_distance_shapes_ids'] = []
+			@@vars['found_time_shapes_ids'] = []
 
-		# Initial request
-		make_req(walk['body'][0],geo_id)
+			geoid_fences = JSON[get_fences(geo_id).inspect.gsub('"{','{').gsub('}"','}').gsub('\"','"')][0]
 
-		# Cycle through all the points in the walk
-		for point in walk['body'] do
-			rgeo_point = @@vars['factory'].point(point[0],point[1])
-			#puts rgeo_point
+			# Initial request
+			make_req(walk['body'][0],geo_id)
 
-			# Calculate fence misses on methods other than SUJ Geo
-			calculate_misses(rgeo_point,geo_id,geoid_fences['shapes'])
+			# Cycle through all the points in the walk
+			for point in walk['body'] do
+				rgeo_point = @@vars['factory'].point(point[0],point[1])
+				#puts rgeo_point
 
-			# For each polygon in the arriving list
-			# check if we already entered
-			for p in @@vars['arriving_a'] do
-				if rgeo_point.within?(p)
-					if @@vars['inside'].index(p) != nil
-						# Already detected inside, do nothing
+				# Calculate fence misses on methods other than SUJ Geo
+				calculate_misses(rgeo_point,geo_id,geoid_fences['shapes'])
+
+				# For each polygon in the arriving list
+				# check if we already entered
+				for p in @@vars['arriving_a'] do
+					if rgeo_point.within?(p)
+						if @@vars['inside'].index(p) != nil
+							# Already detected inside, do nothing
+						else
+							puts ">>>>>> Arrived fence with radius #{@@vars['radii'][p]}! Making request ..." if @@vars['sim_static_walk'] < 1
+							@@vars['walked_into_fences'] += 1
+							@@vars['inside'] << p
+							#@@vars['arriving_a'].delete(p)
+							#@@vars['radii'].delete(p)
+							# Make request
+							make_req(point,geo_id)
+						end
 					else
-						puts ">>>>>> Arrived fence with radius #{@@vars['radii'][p]}! Making request ..." if @@vars['sim_static_walk'] < 1
-						@@vars['walked_into_fences'] += 1
-						@@vars['inside'] << p
-						#@@vars['arriving_a'].delete(p)
+						# Do nothing
+						#puts "====== Still outside, doing nothing"
+					end
+				end
+
+				# For each polygon in the leaving list
+				# check if we already left
+				for p in @@vars['leaving_a'] do
+					if rgeo_point.within?(p)
+						# Do nothing
+						#puts "====== Still inside, doing nothing"
+					else
+						puts "<<<<<< Left fence with radius #{@@vars['radii'][p]}! Making request ..." if @@vars['sim_static_walk'] < 1 
+						@@vars['left_fence_radius'] += @@vars['radii'][p]
+						#@@vars['leaving_a'].delete(p)
 						#@@vars['radii'].delete(p)
+						@@vars['inside'] = []
 						# Make request
 						make_req(point,geo_id)
 					end
-				else
-					# Do nothing
-					#puts "====== Still outside, doing nothing"
 				end
 			end
 
-			# For each polygon in the leaving list
-			# check if we already left
-			for p in @@vars['leaving_a'] do
-				if rgeo_point.within?(p)
-					# Do nothing
-					#puts "====== Still inside, doing nothing"
-				else
-					puts "<<<<<< Left fence with radius #{@@vars['radii'][p]}! Making request ..." if @@vars['sim_static_walk'] < 1 
-					@@vars['left_fence_radius'] += @@vars['radii'][p]
-					#@@vars['leaving_a'].delete(p)
-					#@@vars['radii'].delete(p)
-					@@vars['inside'] = []
-					# Make request
-					make_req(point,geo_id)
-				end
+			calculate_sim_stats(JSON[get_fences()],walk)
+			calculate_run_stats(JSON[get_fences()],walk,geo_id,false)
+
+			if @@vars['html_debug'] == true
+				puts "====================================================================="
+				puts "Copy this into the public/demo.html file for testing."
+				puts " === test_fences:"
+				puts get_fences(@@vars['sim_geofence_test_id'][0]).inspect.gsub('"{','{').gsub('}"','}').gsub('\"','"')
+				puts " === test_circlesRAW:"
+				puts @@vars['html_debug_aux_text'].inspect.gsub('"{','{').gsub('}"','}').gsub('\"','"')
+				puts " === fakeResponse:"
+				puts JSON[original_walk]
 			end
 		end
-
-		calculate_sim_stats(JSON[get_fences()],walk)
-		calculate_run_stats(JSON[get_fences()],walk,geo_id,false)
-
-		if @@vars['html_debug'] == true
-			puts "====================================================================="
-			puts "Copy this into the public/demo.html file for testing."
-			puts " === test_fences:"
-			puts get_fences(@@vars['sim_geofence_test_id'][0]).inspect.gsub('"{','{').gsub('}"','}').gsub('\"','"')
-			puts " === test_circlesRAW:"
-			puts @@vars['html_debug_aux_text'].inspect.gsub('"{','{').gsub('}"','}').gsub('\"','"')
-			puts " === fakeResponse:"
-			puts JSON[original_walk]
-		end
+		puts "=========" if @@vars['show_intermediate_countings']
+		puts "_~^ Finished tests for geofence #{@@vars['sim_geofence_ids'][geo_id]} ^~_"
+		show_average_stats()
+		puts "========="
 	end
-	puts "=========" if @@vars['show_intermediate_countings']
-	puts "_~^ Finished tests for geofence #{@@vars['sim_geofence_ids'][geo_id]} ^~_"
-	show_average_stats()
-	puts "========="
 end
