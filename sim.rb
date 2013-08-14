@@ -8,9 +8,6 @@ require "rgeo"
 # Define system variables
 ####
 
-$stdout.reopen("console.out", "w")
-$stdout.sync = true
-
 @@vars = {
 	#'walk_speed_kmh' => 4.0+rand()*2,
 	'walk_speed_kmh' => 5.0,
@@ -21,8 +18,8 @@ $stdout.sync = true
 	'lon' => 139.694345,
 	'lat' => 35.664641,
 	'length' => 25000,
-	'timed_requests_threshold' => [25,90,270,810],
-	'ios_distance_threshold' => [35,120,360,1080],
+	'timed_requests_threshold' => [25],#,90,270,810],
+	'ios_distance_threshold' => [35],#,120,360,1080],
 	'thresh_combo_counter' => 0,
 	# Threshold to further divide arcs in smaller paths
 	# using Luis' magical number to convert degrees to meters
@@ -47,6 +44,7 @@ $stdout.sync = true
 	'total_missed_time_shapes' => 0,
 	'total_geofence_radius' => 0,
 	'total_left_fence_radius' => 0,
+	'total_visited_shapes' => 0,
 	# Counters and accs for misses
 	'prev_point' => nil,
 	'ellapsed_time' => 0,
@@ -55,8 +53,11 @@ $stdout.sync = true
 	'missed_time_shapes_ids' => [],
 	'found_distance_shapes_ids' => [],
 	'found_time_shapes_ids' => [],
+	'visited_shapes_ids' => [],
 	## Enable debug/verbose output
 	'html_debug' => false,
+	'file_output' => false,
+	'file_output_filename' => 'console.out',
 	'show_intermediate_countings' => false,
 	## Sim variables
 	# sim_static_walk > 0 uses static paths, =0 uses dynamic paths
@@ -69,6 +70,11 @@ $stdout.sync = true
 	'sim_geofence_test_id' => [0,1,2,3,4,5,6,7,8,9],
 	'sim_repetitions' => 9
 }
+
+if @@vars['file_output']
+	$stdout.reopen(@@vars['file_output_filename'], "w")
+	$stdout.sync = true
+end
 
 ######
 # OAuth setup for Geoluis
@@ -238,17 +244,27 @@ def calculate_run_stats(fences,walk,geofence_id,global_stats)
 			end
 		end
 
+		# Put some order in the shape ids, flattening the trees and getting rid of repeated values
 		@@vars['missed_distance_shapes_ids'].flatten!.uniq! if @@vars['missed_distance_shapes_ids'].length > 0
 		@@vars['missed_time_shapes_ids'].flatten!.uniq! if @@vars['missed_time_shapes_ids'].length > 0
 		@@vars['found_distance_shapes_ids'].flatten!.uniq! if @@vars['found_distance_shapes_ids'].length > 0
 		@@vars['found_time_shapes_ids'].flatten!.uniq! if @@vars['found_time_shapes_ids'].length > 0
 
+		if @@vars['visited_shapes_ids'].length > 0
+			# We want to keep the order of all visited shapes, so we cannot get rid of repeated values here
+			@@vars['visited_shapes_ids'].flatten!
+			# Some regex magic to cluster the values
+			@@vars['visited_shapes_ids'] = @@vars['visited_shapes_ids'].join(",").gsub(/[,]{2,}/, "-").split('-').map{|x| x.split(',').uniq}.flatten
+		end
+		
 		missed_fences_by_distance = (@@vars['missed_distance_shapes_ids'] - @@vars['found_distance_shapes_ids']).count
 		missed_fences_by_time = (@@vars['missed_time_shapes_ids'] - @@vars['found_time_shapes_ids']).count
+		visited_shapes = @@vars['visited_shapes_ids'].length
 
 		puts "== Run stats" if @@vars['show_intermediate_countings']
 		puts " Number of requests: #{@@vars['request_counter']}
- # of fences walked into: #{@@vars['walked_into_fences']}
+ # of circular fences walked into: #{@@vars['walked_into_fences']}
+ # of visited shapes: #{visited_shapes}
  Avg request size: #{@@vars['request_size']/@@vars['request_counter']} bytes
  iOS black fence misses (#{@@vars['ios_distance_threshold'][@@vars['thresh_combo_counter']]}m): #{missed_fences_by_distance}
  Timed requests fence misses (#{@@vars['timed_requests_threshold'][@@vars['thresh_combo_counter']]}s): #{missed_fences_by_time}
@@ -262,6 +278,7 @@ def calculate_run_stats(fences,walk,geofence_id,global_stats)
 		@@vars['total_request_size'] += @@vars['request_size']/@@vars['request_counter']
 		@@vars['total_missed_distance_shapes'] += missed_fences_by_distance
 		@@vars['total_missed_time_shapes'] += missed_fences_by_time
+		@@vars['total_visited_shapes'] += visited_shapes
 		@@vars['total_geofence_radius'] += fence_radii*1.0/fence['shapes'].length
 		@@vars['total_left_fence_radius'] += @@vars['left_fence_radius']/@@vars['request_counter']
 	end
@@ -275,7 +292,8 @@ def show_average_stats()
  Total sim time: #{time}s (#{(time/60).floor}m#{(((time/60)-(time/60).floor)*60).floor}s)
  ====
  Total avg number of requests: #{@@vars['total_request_counter']*1.0/@@vars['sim_repetitions']}
- Total avg # of fences walked into: #{@@vars['total_walked_into_fences']*1.0/@@vars['sim_repetitions']}
+ Total avg # of circular fences walked into: #{@@vars['total_walked_into_fences']*1.0/@@vars['sim_repetitions']}
+ Total avg # of visited shapes: #{@@vars['total_visited_shapes']*1.0/@@vars['sim_repetitions']}
  Total avg request size: #{@@vars['total_request_size']*1.0/@@vars['sim_repetitions']}
  Total avg iOS black fence misses (#{@@vars['ios_distance_threshold'][@@vars['thresh_combo_counter']]}m): #{@@vars['total_missed_distance_shapes']*1.0/@@vars['sim_repetitions']}
  Total avg timed requests fence misses (#{@@vars['timed_requests_threshold'][@@vars['thresh_combo_counter']]}s): #{@@vars['total_missed_time_shapes']*1.0/@@vars['sim_repetitions']}
@@ -326,32 +344,44 @@ end
 
 # Method to calculate fence misses from blackbox and timed request methods
 def calculate_misses (point,geo_id,shapes)
+	# In how many shapes is this point inside?
+	known_shapes = shapes_here(point,shapes)
+
 	if @@vars['prev_point'] == nil
 		@@vars['prev_point'] = point
 		# We would make a request now, so we should discard the shapes as unknown
-		known_shapes = shapes_here(point,shapes)
+		#known_shapes = shapes_here(point,shapes)
 		@@vars['found_distance_shapes_ids'] << known_shapes
 		@@vars['found_time_shapes_ids'] << known_shapes
+		@@vars['visited_shapes_ids'] << known_shapes
+	end
+
+	# Count all the visited shapes
+	# We don't include shapes visited in a row
+	if known_shapes.length == 0
+		@@vars['visited_shapes_ids'] << nil
+	else
+		@@vars['visited_shapes_ids'] << known_shapes
 	end
 
 	# If the distance is lower than ios_distance_threshold meters
 	if @@vars['ellapsed_distance'] < @@vars['ios_distance_threshold'][@@vars['thresh_combo_counter']]
 		@@vars['ellapsed_distance'] += distance([@@vars['prev_point'].x(),@@vars['prev_point'].y()],[point.x(),point.y()])*111110
-		@@vars['missed_distance_shapes_ids'] << shapes_here(point,shapes)
+		@@vars['missed_distance_shapes_ids'] << known_shapes
 	else
 		@@vars['ellapsed_distance'] = 0
 		# We would make a request now, so we should discard the shapes as unknown
-		@@vars['found_distance_shapes_ids'] << shapes_here(point,shapes)
+		@@vars['found_distance_shapes_ids'] << known_shapes
 	end
 
 	# If the ellapsed walk time is smaller than timed_requests_threshold seconds
 	if @@vars['ellapsed_time'] < @@vars['timed_requests_threshold'][@@vars['thresh_combo_counter']]
 		@@vars['ellapsed_time'] += distance([@@vars['prev_point'].x(),@@vars['prev_point'].y()],[point.x(),point.y()])*111110/@@vars['walk_speed_ms']
-		@@vars['missed_time_shapes_ids'] << shapes_here(point,shapes)
+		@@vars['missed_time_shapes_ids'] << known_shapes
 	else
 		@@vars['ellapsed_time'] = 0
 		# We would make a request now, so we should discard the shapes as unknown
-		@@vars['found_time_shapes_ids'] << shapes_here(point,shapes)
+		@@vars['found_time_shapes_ids'] << known_shapes
 	end
 
 	@@vars['prev_point'] = point
