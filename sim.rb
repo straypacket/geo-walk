@@ -18,8 +18,8 @@ require "rgeo"
 	'lon' => 139.694345,
 	'lat' => 35.664641,
 	'length' => 25000,
-	'timed_requests_threshold' => [25],#,90,270,810],
-	'ios_distance_threshold' => [35],#,120,360,1080],
+	'timed_requests_threshold' => [25,90,270,810],
+	'ios_distance_threshold' => [35,120,360,1080],
 	'thresh_combo_counter' => 0,
 	# Threshold to further divide arcs in smaller paths
 	# using Luis' magical number to convert degrees to meters
@@ -66,6 +66,7 @@ require "rgeo"
 	'sim_static_walk' => 1,
 	# geofence_ids (which are in fact geo_object id's according to the JSON spec)
 	'sim_geofence_ids' => ['density_0_1', 'density_0_2', 'density_0_3', 'density_0_4', 'density_0_5', 'density_0_6', 'density_0_7', 'density_0_8', 'density_0_9', 'density_1_0'],
+	#'sim_geofence_ids' => ['area_1', 'area_5'],
 	# list of geofence_ids to test
 	'sim_geofence_test_id' => [0,1,2,3,4,5,6,7,8,9],
 	'sim_repetitions' => 9
@@ -310,6 +311,7 @@ def show_average_stats()
 	@@vars['total_missed_time_shapes'] = 0
 	@@vars['total_geofence_radius'] = 0
 	@@vars['total_left_fence_radius'] = 0
+	@@vars['total_visited_shapes'] = 0
 	return
 end
 
@@ -572,6 +574,7 @@ for thresh_combo in @@vars['timed_requests_threshold'].count.times do
 			@@vars['missed_time_shapes_ids'] = []
 			@@vars['found_distance_shapes_ids'] = []
 			@@vars['found_time_shapes_ids'] = []
+			@@vars['visited_shapes_ids'] = []
 
 			geoid_fences = JSON[get_fences(geo_id).inspect.gsub('"{','{').gsub('}"','}').gsub('\"','"')][0]
 
