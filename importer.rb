@@ -16,7 +16,7 @@ RGeo::Shapefile::Reader.open('data/N05-12_RailroadSection2.shp') do |file|
     #運営会社
     company = record.attributes['N05_003'] = record.attributes['N05_003'].force_encoding('sjis').encode('utf-8')
     #
-    almost_random_code = record.attributes['N05_006'] = record.attributes['N05_006'].force_encoding('sjis').encode('utf-8')
+    almost_random_code = record.attributes['N05_006'] = record.attributes['N05_006'].force_encoding('sjis').encode('utf-8').split("_")[1].to_i
 
     path_a = record.geometry[0].to_s.split(")")[0].split("(")[1].split(",").map {|x| x.split(" ").map{|n| n.to_f}}
 
@@ -77,6 +77,8 @@ RGeo::Shapefile::Reader.open('data/N05-12_Station2.shp') do |file|
     company = record.attributes['N05_003'] = record.attributes['N05_003'].force_encoding('sjis').encode('utf-8')
     #駅名
     station = record.attributes['N05_011'] = record.attributes['N05_011'].force_encoding('sjis').encode('utf-8')
+    #
+    almost_random_code = record.attributes['N05_006'] = record.attributes['N05_006'].force_encoding('sjis').encode('utf-8').split("_")[1].to_i
     #Point
     index_coord = record.geometry
 
@@ -86,6 +88,7 @@ RGeo::Shapefile::Reader.open('data/N05-12_Station2.shp') do |file|
         :lat => index_coord.x().to_f,
         :lon => index_coord.y().to_f
       },
+      :code => almost_random_code,
       :station => station,
       :line => line,
       :company => company
