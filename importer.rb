@@ -7,6 +7,38 @@ db = conn['roadsimulator']
 indexes = ['head','tail']
 
 # Parse Shapefile
+col = db['bus_station_coords']
+RGeo::Shapefile::Reader.open('data/P11-10_13-jgd-g_BusStop.shp') do |file|
+  puts "File contains #{file.num_records} records."
+  file.each do |record|
+    # バス路線　（ルート）
+    line = record.attributes['P11_004_1'] = record.attributes['P11_004_1'].encode('utf-8')
+    #運営会社
+    company = record.attributes['P11_003_1'] = record.attributes['P11_003_1'].encode('utf-8')
+    #駅名
+    stop = record.attributes['P11_001'] = record.attributes['P11_001'].encode('utf-8')
+    #Point
+    index_coord = record.geometry
+
+    #Create query
+    p = {
+      :idx_loc => {
+        :lat => index_coord.x().to_f,
+        :lon => index_coord.y().to_f
+      },
+      :stop => stop,
+      :line => line,
+      :company => company
+    }
+
+    #Insert into MongoDB
+    col.insert(p)
+  end
+end
+
+exit
+
+# Parse Shapefile
 col = db['station_coords']
 RGeo::Shapefile::Reader.open('data/N05-12_Station2.shp') do |file|
   puts "File contains #{file.num_records} records."
@@ -35,9 +67,6 @@ RGeo::Shapefile::Reader.open('data/N05-12_Station2.shp') do |file|
     col.insert(p)
   end
 end
-
-return 0
-exit
 
 indexes.each do |i|
 
