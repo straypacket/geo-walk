@@ -124,7 +124,7 @@ def get_arch(db, lon, lat, limit)
   res = db.command( selector )
 
   # Get which tail_point is closer to a train station
-  selector['geoNear'] = 'station_coords'
+  selector['geoNear'] = 'train_station_coords'
   ordered_res = []
 
   # TO DO

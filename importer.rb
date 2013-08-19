@@ -6,7 +6,37 @@ conn = Mongo::Connection.new("localhost", 27017, :pool_size => 100, :pool_timeou
 db = conn['roadsimulator']
 indexes = ['head','tail']
 
-# Parse Shapefile
+# Parse train line shapefile
+col = db['train_lines']
+RGeo::Shapefile::Reader.open('data/N05-12_RailroadSection2.shp') do |file|
+  puts "File contains #{file.num_records} records."
+  file.each do |record|
+    #路線名
+    line = record.attributes['N05_002'] = record.attributes['N05_002'].force_encoding('sjis').encode('utf-8')
+    #運営会社
+    company = record.attributes['N05_003'] = record.attributes['N05_003'].force_encoding('sjis').encode('utf-8')
+    #
+    almost_random_code = record.attributes['N05_006'] = record.attributes['N05_006'].force_encoding('sjis').encode('utf-8')
+
+    path_a = record.geometry[0].to_s.split(")")[0].split("(")[1].split(",").map {|x| x.split(" ").map{|n| n.to_f}}
+
+    #Create query
+    p = {
+      :idx_loc => {
+        :type => "LineString",
+        :coordinates => path_a
+      },
+      :code => almost_random_code,
+      :line => line,
+      :company => company
+    }
+
+    #Insert into MongoDB
+    col.insert(p)
+  end
+end
+
+# Parse bus station shapefile
 col = db['bus_station_coords']
 RGeo::Shapefile::Reader.open('data/P11-10_13-jgd-g_BusStop.shp') do |file|
   puts "File contains #{file.num_records} records."
@@ -36,10 +66,8 @@ RGeo::Shapefile::Reader.open('data/P11-10_13-jgd-g_BusStop.shp') do |file|
   end
 end
 
-exit
-
-# Parse Shapefile
-col = db['station_coords']
+# Parse Train station shapefile
+col = db['train_station_coords']
 RGeo::Shapefile::Reader.open('data/N05-12_Station2.shp') do |file|
   puts "File contains #{file.num_records} records."
   file.each do |record|

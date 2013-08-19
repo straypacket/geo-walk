@@ -24,6 +24,22 @@ In the case of street data, the shapefiles have several arcs. Those arcs , when 
          			[139.6994996, 35.6657032]
          		 ]
       }
+      
+The structure of an train line is as follow (we make use of GeoJSON support in Mongo to create a Linestring for each line):
+      
+      {
+      	:idx_loc => {
+        	:type => "LineString",
+        	:coordinates => [
+        			  			[139.698028564453, 35.6629943847656],
+         						…, 
+         						[139.6994996, 35.6657032]
+         					 ]
+      	},
+      	:code => code,
+      	:line => line,
+      	:company => company
+    }
 
 ## Quick guide
 To use this project, you need to setup MongoDB and Ruby with the following gems installed:
@@ -83,7 +99,9 @@ Mongo DB needs to have some of the document fields indexed in order to allow pro
 
 `db.road_coords.ensureIndex({"head": "2dsphere"})`
 `db.road_coords.ensureIndex({"tail": "2dsphere"})`
-`db.station_coords.ensureIndex({"idx_loc": "2dsphere"})`
+`db.train_station_coords.ensureIndex({"idx_loc": "2dsphere"})`
+`db.bus_station_coords.ensureIndex({"idx_loc": "2dsphere"})`
+`db.train_lines.ensureIndex({"idx_loc": "2dsphere"})`
 
 For search examples please go to this following gist:
 `https://gist.github.com/straypacket/5780848#file-mongo_geo_indexing-pl`
