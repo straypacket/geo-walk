@@ -129,15 +129,14 @@ def get_arch(db, lon, lat, limit)
   # Build query
   selector = ActiveSupport::OrderedHash.new
 
-  # Check if we're close to a train station
-  #  If that's the case, we'll take a train ride instead
+  # Query for train ride
   selector['geoNear'] = 'train_station_coords'
   selector['near'] = [lon, lat]
   selector['spherical'] = true
   selector['distanceMultiplier'] = 6371000
   selector['limit'] = 1
 
-  # How many stations we travel?
+  # How many stations do we travel?
   # TO DO: Use data from commutes dataset
   # TO DO: Local has more hops than express trains
   hops = 2+rand(10)
@@ -148,9 +147,9 @@ def get_arch(db, lon, lat, limit)
   # Get nearby train stations
   train_stations_res = db.command( selector )
 
-  # For each station
+  # For each train station
   train_stations_res['results'].each do |train_station|
-    # If less than 100m and 1/2 probability
+    # If closer than 100m  to a train station and the odds are in our side (1/3 probability)
     if train_station['dis'] < 100 and rand(3) == 2
       # This code is the concatenation of the line code plus the station code
       # By operating on this code we can decide which station we stop at
@@ -171,13 +170,13 @@ def get_arch(db, lon, lat, limit)
       selector['limit'] = 1
       train_line_res = db.command( selector )
 
-      #For each line
+      #For each train line
       train_line_res['results'].each do |train_line|
         pos_init = nil
         pos_end = nil
-        # If less than 10m
+        # If closer than 10m
         if train_line['dis'] < 10
-          # Search position in line
+          # Search start and end stations position in train line array
           pos = 0
           train_line['obj']['idx_loc']['coordinates'].each do |line_pos|
             if line_pos[0] == train_station['obj']['idx_loc']['lat'] && line_pos[1] == train_station['obj']['idx_loc']['lon'] 
@@ -193,13 +192,16 @@ def get_arch(db, lon, lat, limit)
           end
         end
 
+        # If we found a valid segment (with start and end stations)
         if pos_init and pos_end
+          # Chose the correct sense
           if pos_init > pos_end
             arc['obj']['body'] = train_line['obj']['idx_loc']['coordinates'][pos_end..pos_init].reverse
           else
             arc['obj']['body'] = train_line['obj']['idx_loc']['coordinates'][pos_init..pos_end]
           end
 
+          # Calculate distance for traveled segment
           dist = 0
           (arc['obj']['body'].length-1).times do |p|
             dist += distance(arc['obj']['body'][p][0],arc['obj']['body'][p][1],arc['obj']['body'][p+1][0],arc['obj']['body'][p+1][1])
@@ -208,13 +210,12 @@ def get_arch(db, lon, lat, limit)
           arc['obj']['distance'] = dist
         end
       end
+      # We're done with the train arc
       return arc
     end
   end
 
-  #exit
-
-  # Query
+  # Query for walk paths
   selector['geoNear'] = 'road_coords_head'
   selector['near'] = [lon, lat]
   selector['distanceMultiplier'] = 6371
