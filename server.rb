@@ -57,7 +57,7 @@ end
 def make_walk(db, lon, lat, length)
   # Initial run
   limit = 10
-  local_arch = get_arch(db, lon, lat, limit)
+  local_arch = get_arch(db, lon, lat, limit, length)
 
   # Inits
   walk = ActiveSupport::OrderedHash.new
@@ -73,11 +73,11 @@ def make_walk(db, lon, lat, length)
     
     if local_arch['obj']['body']
       old_body = local_arch['obj']['body']
-      local_arch = get_arch(db, old_body[old_body.length()-1][0], old_body[old_body.length()-1][1], limit)
+      local_arch = get_arch(db, old_body[old_body.length()-1][0], old_body[old_body.length()-1][1], limit, length)
 
       # Draw another arch if the one we got is invalid
       while local_arch['obj']['distance'] == 0
-        local_arch = get_arch(db, old_body[old_body.length()-1][0], old_body[old_body.length()-1][1], limit)
+        local_arch = get_arch(db, old_body[old_body.length()-1][0], old_body[old_body.length()-1][1], limit, length)
       end
 
       # Is this an already discovered path
@@ -101,9 +101,9 @@ def make_walk(db, lon, lat, length)
       # We popped too much! Starting from scratch ...
       puts "Too much pop!"
       if old_body
-        local_arch = get_arch(db, old_body[old_body.length()-1][0], old_body[old_body.length()-1][1], limit) 
+        local_arch = get_arch(db, old_body[old_body.length()-1][0], old_body[old_body.length()-1][1], limit, length) 
       else
-        local_arch = get_arch(db, lon, lat, limit)
+        local_arch = get_arch(db, lon, lat, limit, length)
       end
       next
     end
@@ -124,7 +124,7 @@ end
 ####
 # Add arch to walking path
 ####
-def get_arch(db, lon, lat, limit)
+def get_arch(db, lon, lat, limit, length)
   train_station_coords_col = db.collection('train_station_coords')
   # Build query
   selector = ActiveSupport::OrderedHash.new
@@ -137,6 +137,8 @@ def get_arch(db, lon, lat, limit)
   selector['limit'] = 1
 
   # How many stations do we travel?
+  # TO DO: estimate from length
+  #        1 stop per Km? Analyze from data!
   # TO DO: Use data from commutes dataset
   # TO DO: Local has more hops than express trains
   hops = 2+rand(10)
@@ -168,6 +170,7 @@ def get_arch(db, lon, lat, limit)
       # Only one must be chosen
       # TO DO: use commute dataset to statistically chose connection
       selector['limit'] = 1
+      selector['distanceMultiplier'] = 1
       train_line_res = db.command( selector )
 
       #For each train line
@@ -180,11 +183,11 @@ def get_arch(db, lon, lat, limit)
           pos = 0
           train_line['obj']['idx_loc']['coordinates'].each do |line_pos|
             if line_pos[0] == train_station['obj']['idx_loc']['lat'] && line_pos[1] == train_station['obj']['idx_loc']['lon'] 
-              puts "Initial station found at position #{pos} of #{train_line['obj']['idx_loc']['coordinates'].length}"
+              puts "Initial station (#{train_station['obj']['idx_loc'].to_s}) found at position #{pos} of #{train_line['obj']['idx_loc']['coordinates'].length}"
               pos_init = pos
             end
             if line_pos[0] == final_station['idx_loc']['lat'] && line_pos[1] == final_station['idx_loc']['lon'] 
-              puts "Final station found at position #{pos} of #{train_line['obj']['idx_loc']['coordinates'].length}"
+              puts "Final station (#{final_station['idx_loc'].to_s}) found at position #{pos} of #{train_line['obj']['idx_loc']['coordinates'].length}"
               pos_end = pos
             end
             break if pos_init and pos_end
@@ -200,6 +203,9 @@ def get_arch(db, lon, lat, limit)
           else
             arc['obj']['body'] = train_line['obj']['idx_loc']['coordinates'][pos_init..pos_end]
           end
+
+          # Add walk type for each point (1 for train)
+          arc['obj']['body'].map {|x| x << 1}
 
           # Calculate distance for traveled segment
           dist = 0
@@ -226,10 +232,6 @@ def get_arch(db, lon, lat, limit)
   selector['geoNear'] = 'train_station_coords'
   ordered_res = []
 
-  # TO DO
-  # When reaching a train station, travel a few train
-  # stations on that line
-
   #For each of the candidate arcs (closest arcs)
   res['results'].each do |p|
 
@@ -254,7 +256,12 @@ def get_arch(db, lon, lat, limit)
 
   # Generate random element, based on a Gaussian distribution
   r = (rand(limit) - (limit-2)).abs
-  return sorted[r]['arc']
+  arc = sorted[r]['arc']
+
+  # Add walk type for each point (0 for walk)
+  arc['obj']['body'].map {|x| x << 0}
+
+  return arc
 end
 
 ####
