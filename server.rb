@@ -64,24 +64,32 @@ def make_walk(db, lon, lat, length)
   walk['distance'] = local_arch['obj']['distance']
   walk['body'] = [local_arch['obj']['body']]
   walked = {}
-  rewalk_thresh = 1
+  rewalk_thresh = 5
 
   # Loop until we reach the requested length
   while walk['distance'] <= length
+    #puts "#{walk['distance']} of #{length}"
+    old_body = nil
+    
     if local_arch['obj']['body']
       old_body = local_arch['obj']['body']
       local_arch = get_arch(db, old_body[old_body.length()-1][0], old_body[old_body.length()-1][1], limit)
 
+      # Draw another arch if the one we got is invalid
+      while local_arch['obj']['distance'] == 0
+        local_arch = get_arch(db, old_body[old_body.length()-1][0], old_body[old_body.length()-1][1], limit)
+      end
+
       # Is this an already discovered path
       if walked.include? local_arch['obj']
-        walked[local_arch['obj']] = walked[local_arch['obj']]+1
-        # If we walk past this arch for more than 5 times, walk back until we find a fresh path
+        walked[local_arch['obj']] += 1
+        # If we walk past this arch for more than rewalk_thresh times, walk back until we find a fresh path
         if walked[local_arch['obj']] >= rewalk_thresh
           # Walk back/ Pop dubious path from walked array
           walk['body'].pop()
           # Update current position to last position after popping 
           local_arch['obj']['body'] = walk['body'][walk['body'].length()-1]
-          #Increase the search limit
+          # Increase the search limit
           limit += 1
           # Get another arch
           next
@@ -91,7 +99,12 @@ def make_walk(db, lon, lat, length)
       end
     else
       # We popped too much! Starting from scratch ...
-      local_arch = get_arch(db, lon, lat, limit)
+      puts "Too much pop!"
+      if old_body
+        local_arch = get_arch(db, old_body[old_body.length()-1][0], old_body[old_body.length()-1][1], limit) 
+      else
+        local_arch = get_arch(db, lon, lat, limit)
+      end
       next
     end
 
@@ -112,15 +125,100 @@ end
 # Add arch to walking path
 ####
 def get_arch(db, lon, lat, limit)
+  train_station_coords_col = db.collection('train_station_coords')
   # Build query
   selector = ActiveSupport::OrderedHash.new
-  selector['geoNear'] = 'road_coords_head'
+
+  # Check if we're close to a train station
+  #  If that's the case, we'll take a train ride instead
+  selector['geoNear'] = 'train_station_coords'
   selector['near'] = [lon, lat]
   selector['spherical'] = true
-  selector['distanceMultiplier'] = 6371
-  selector['limit'] = limit
+  selector['distanceMultiplier'] = 6371000
+  selector['limit'] = 1
+
+  # How many stations we travel?
+  # TO DO: Use data from commutes dataset
+  # TO DO: Local has more hops than express trains
+  hops = 2+rand(10)
+  arc = {}
+  arc['obj'] = {}
+  arc['obj']['distance'] = 0
+
+  # Get nearby train stations
+  train_stations_res = db.command( selector )
+
+  # For each station
+  train_stations_res['results'].each do |train_station|
+    # If less than 100m and 1/2 probability
+    if train_station['dis'] < 100 and rand(3) == 2
+      # This code is the concatenation of the line code plus the station code
+      # By operating on this code we can decide which station we stop at
+      # TO DO: + or -
+      # TO DO: Add time of the day
+      final_station_code = train_station['obj']['code'].to_i + hops
+      final_station = train_station_coords_col.find(:code => final_station_code).to_a[0]
+
+      return arc if final_station == nil
+
+      # Update query to search for the the line
+      selector['geoNear'] = 'train_lines'
+      selector['near'] = [train_station['obj']['idx_loc']['lat'], train_station['obj']['idx_loc']['lon']]
+      # This defined how many lines to analyze
+      # Stations with many lines, like Shinjuku, will need a higher value
+      # Only one must be chosen
+      # TO DO: use commute dataset to statistically chose connection
+      selector['limit'] = 1
+      train_line_res = db.command( selector )
+
+      #For each line
+      train_line_res['results'].each do |train_line|
+        pos_init = nil
+        pos_end = nil
+        # If less than 10m
+        if train_line['dis'] < 10
+          # Search position in line
+          pos = 0
+          train_line['obj']['idx_loc']['coordinates'].each do |line_pos|
+            if line_pos[0] == train_station['obj']['idx_loc']['lat'] && line_pos[1] == train_station['obj']['idx_loc']['lon'] 
+              puts "Initial station found at position #{pos} of #{train_line['obj']['idx_loc']['coordinates'].length}"
+              pos_init = pos
+            end
+            if line_pos[0] == final_station['idx_loc']['lat'] && line_pos[1] == final_station['idx_loc']['lon'] 
+              puts "Final station found at position #{pos} of #{train_line['obj']['idx_loc']['coordinates'].length}"
+              pos_end = pos
+            end
+            break if pos_init and pos_end
+            pos += 1
+          end
+        end
+
+        if pos_init and pos_end
+          if pos_init > pos_end
+            arc['obj']['body'] = train_line['obj']['idx_loc']['coordinates'][pos_end..pos_init].reverse
+          else
+            arc['obj']['body'] = train_line['obj']['idx_loc']['coordinates'][pos_init..pos_end]
+          end
+
+          dist = 0
+          (arc['obj']['body'].length-1).times do |p|
+            dist += distance(arc['obj']['body'][p][0],arc['obj']['body'][p][1],arc['obj']['body'][p+1][0],arc['obj']['body'][p+1][1])
+          end
+
+          arc['obj']['distance'] = dist
+        end
+      end
+      return arc
+    end
+  end
+
+  #exit
 
   # Query
+  selector['geoNear'] = 'road_coords_head'
+  selector['near'] = [lon, lat]
+  selector['distanceMultiplier'] = 6371
+  selector['limit'] = limit
   res = db.command( selector )
 
   # Get which tail_point is closer to a train station
@@ -156,5 +254,33 @@ def get_arch(db, lon, lat, limit)
   # Generate random element, based on a Gaussian distribution
   r = (rand(limit) - (limit-2)).abs
   return sorted[r]['arc']
+end
 
+####
+# Add train arch to walking path
+####
+def get_train_arch(db, lon, lat, limit)
+
+end
+
+####
+# Distance between two points
+####
+def distance(long1, lat1, long2, lat2)
+  dtor = Math::PI/180
+  r = 1#6378.14*1000
+ 
+  rlat1 = lat1 * dtor 
+  rlong1 = long1 * dtor 
+  rlat2 = lat2 * dtor 
+  rlong2 = long2 * dtor 
+ 
+  dlon = rlong1 - rlong2
+  dlat = rlat1 - rlat2
+ 
+  a = (Math::sin(dlat/2))**2 + Math::cos(rlat1) * Math::cos(rlat2) * (Math::sin(dlon/2))**2
+  c = 2 * Math::atan2(Math::sqrt(a), Math::sqrt(1-a))
+  d = r * c
+ 
+  return d
 end
