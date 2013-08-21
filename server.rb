@@ -91,7 +91,7 @@ def make_walk(db, lon, lat, length)
           # Update current position to last position after popping 
           local_arch['obj']['body'] = walk['body'][walk['body'].length()-1]
           # Roughly update distance
-          walk['distance'] -= distance(popped[0][0],popped[0][1],popped[-1][0],popped[-1][1])
+          walk['distance'] -= distance(popped[0][0],popped[0][1],popped[-1][0],popped[-1][1]) if popped.length >= 2
           # Increase the search limit
           limit += 1
           # Get another arch
@@ -115,8 +115,8 @@ def make_walk(db, lon, lat, length)
     # Add body array to walk
     walk['body'].push(local_arch['obj']['body']) if local_arch
 
-    puts "Reported arc distance #{local_arch['obj']['distance']}"
-    puts "Arc first~last -> #{local_arch['obj']['body'][0]}~#{local_arch['obj']['body'][-1]}"
+    #puts "Reported arc distance #{local_arch['obj']['distance']}"
+    #puts "Arc first~last -> #{local_arch['obj']['body'][0]}~#{local_arch['obj']['body'][-1]}"
     # Accumulate distance
     walk['distance'] += (local_arch['obj']['distance']) if local_arch
   end
@@ -157,8 +157,8 @@ def get_arch(db, lon, lat, limit, length)
 
   # For each train station
   train_stations_res['results'].each do |train_station|
-    # If closer than 100m  to a train station and the odds are in our side (1/3 probability)
-    if train_station['dis'] < 100 and rand(3) == 2
+    # If closer than 100m  to a train station and the odds are in our side
+    if train_station['dis'] < 100 and rand(6) == 5
       # This code is the concatenation of the line code plus the station code
       # By operating on this code we can decide which station we stop at
       # TO DO: + or -
