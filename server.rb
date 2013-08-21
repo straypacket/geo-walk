@@ -85,10 +85,13 @@ def make_walk(db, lon, lat, length)
         walked[local_arch['obj']] += 1
         # If we walk past this arch for more than rewalk_thresh times, walk back until we find a fresh path
         if walked[local_arch['obj']] >= rewalk_thresh
+          puts "============= POPPING"
           # Walk back/ Pop dubious path from walked array
-          walk['body'].pop()
+          popped = walk['body'].pop()
           # Update current position to last position after popping 
           local_arch['obj']['body'] = walk['body'][walk['body'].length()-1]
+          # Roughly update distance
+          walk['distance'] -= distance(popped[0][0],popped[0][1],popped[-1][0],popped[-1][1])
           # Increase the search limit
           limit += 1
           # Get another arch
@@ -100,6 +103,7 @@ def make_walk(db, lon, lat, length)
     else
       # We popped too much! Starting from scratch ...
       puts "Too much pop!"
+      walk['distance'] = 0
       if old_body
         local_arch = get_arch(db, old_body[old_body.length()-1][0], old_body[old_body.length()-1][1], limit, length) 
       else
