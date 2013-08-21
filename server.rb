@@ -91,7 +91,9 @@ def make_walk(db, lon, lat, length)
           # Update current position to last position after popping 
           local_arch['obj']['body'] = walk['body'][walk['body'].length()-1]
           # Roughly update distance
-          walk['distance'] -= distance(popped[0][0],popped[0][1],popped[-1][0],popped[-1][1]) if popped.length >= 2
+          if popped
+            walk['distance'] -= distance(popped[0][0],popped[0][1],popped[-1][0],popped[-1][1]) if popped.length >= 2
+          end
           # Increase the search limit
           limit += 1
           # Get another arch
