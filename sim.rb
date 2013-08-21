@@ -9,10 +9,10 @@ require "rgeo"
 ####
 
 @@vars = {
-	#'walk_speed_kmh' => 4.0+rand()*2,
-	'walk_speed_kmh' => 5.0,
-	#'walk_speed_ms' => ((4.0+rand()*2)/(60*60))*1000,
-	'walk_speed_ms' => (5.0/(60*60))*1000,
+	'walk_speed_kmh' => [5.0, 50.0], 
+	'walk_speed_ms' => [(5.0/(60*60))*1000, (50.0/(60*60))*1000],
+	'avg_path_speed_ms' => 0,
+	'fixed_walk_speed_ms' => (5.0/(60*60))*1000,
 	# :buffer_resolution represents the resolution circles should have when converted into polygons
 	'factory' => RGeo::Geographic.simple_mercator_factory( :buffer_resolution => 4),
 	'lon' => 139.694345,
@@ -45,6 +45,7 @@ require "rgeo"
 	'total_geofence_radius' => 0,
 	'total_left_fence_radius' => 0,
 	'total_visited_shapes' => 0,
+	'total_path_speed_ms' => 0,
 	# Counters and accs for misses
 	'prev_point' => nil,
 	'ellapsed_time' => 0,
@@ -69,7 +70,7 @@ require "rgeo"
 	#'sim_geofence_ids' => ['area_1', 'area_5'],
 	# list of geofence_ids to test
 	'sim_geofence_test_id' => [0,1,2,3,4,5,6,7,8,9],
-	'sim_repetitions' => 9
+	'sim_repetitions' => 2
 }
 
 if @@vars['file_output']
@@ -111,7 +112,7 @@ end
 
 ######
 # Uncomment to only get walk paths
-# for i in 90.times do
+# for i in 100.times do
 # 	url = "http://localhost:4570/?lon=#{@@vars['lon']}&lat=#{@@vars['lat']}&length=#{@@vars['length']}"
 # 	uri = URI.parse(url)
 # 	http = Net::HTTP.new("localhost", 4570)
@@ -128,39 +129,6 @@ end
 # Define auxiliar methods
 ####
 
-# Luisian algorithm to calculate area
-def calculate_area_and_centroid(points)
-	n = points.size.to_i
-	area_sum = 0.0; cx_sum = 0.0; cy_sum = 0.0
-
-	for i in 0..n-1
-	  x0 = points[i%n][0]
-	  y1 = points[(i+1)%n][1]
-	  x1 = points[(i+1)%n][0]
-	  y0 = points[i%n][1]
-
-	  factor = x0*y1 - x1*y0
-	  area_sum += factor
-	  cx_sum   += factor * (x0 + x1)
-	  cy_sum   += factor * (y0 + y1)
-	end
-
-	if points.size > 1
-	  factor = 3 * area_sum
-
-	  cx_sum /= factor
-	  cy_sum /= factor
-	else
-	  cx_sum, cy_sum = points.first
-	end
-	area_sum *= 0.5
-
-	area = (111*90*area_sum).abs
-	centroid = [cx_sum, cy_sum]
-
-	return area
-end
-
 # Method to calculate distance between points
 # * update with a more geographically correct version
 def distance(x,y)
@@ -169,7 +137,7 @@ end
 
 # Method to calculate system stats
 def calculate_sim_stats(fences,walk)
-	time = (walk['distance']*111110.0).ceil/@@vars['walk_speed_ms']
+	time = (walk['distance']*111110.0).ceil/(@@vars['avg_path_speed_ms']/walk['body'].length)
 	path = "random"
 	path = @@vars['sim_static_walk'] if @@vars['sim_static_walk'] > 0
 
@@ -266,6 +234,7 @@ def calculate_run_stats(fences,walk,geofence_id,global_stats)
 		puts " Number of requests: #{@@vars['request_counter']}
  # of circular fences walked into: #{@@vars['walked_into_fences']}
  # of visited shapes: #{visited_shapes}
+ Avg speed: #{@@vars['avg_path_speed_ms']/walk['body'].length}
  Avg request size: #{@@vars['request_size']/@@vars['request_counter']} bytes
  iOS black fence misses (#{@@vars['ios_distance_threshold'][@@vars['thresh_combo_counter']]}m): #{missed_fences_by_distance}
  Timed requests fence misses (#{@@vars['timed_requests_threshold'][@@vars['thresh_combo_counter']]}s): #{missed_fences_by_time}
@@ -282,6 +251,7 @@ def calculate_run_stats(fences,walk,geofence_id,global_stats)
 		@@vars['total_visited_shapes'] += visited_shapes
 		@@vars['total_geofence_radius'] += fence_radii*1.0/fence['shapes'].length
 		@@vars['total_left_fence_radius'] += @@vars['left_fence_radius']/@@vars['request_counter']
+		@@vars['total_path_speed_ms'] += @@vars['avg_path_speed_ms']/walk['body'].length
 	end
 	return
 end
@@ -295,6 +265,7 @@ def show_average_stats()
  Total avg number of requests: #{@@vars['total_request_counter']*1.0/@@vars['sim_repetitions']}
  Total avg # of circular fences walked into: #{@@vars['total_walked_into_fences']*1.0/@@vars['sim_repetitions']}
  Total avg # of visited shapes: #{@@vars['total_visited_shapes']*1.0/@@vars['sim_repetitions']}
+ Total avg speed: #{@@vars['total_path_speed_ms']*1.0/@@vars['sim_repetitions']} m/s
  Total avg request size: #{@@vars['total_request_size']*1.0/@@vars['sim_repetitions']}
  Total avg iOS black fence misses (#{@@vars['ios_distance_threshold'][@@vars['thresh_combo_counter']]}m): #{@@vars['total_missed_distance_shapes']*1.0/@@vars['sim_repetitions']}
  Total avg timed requests fence misses (#{@@vars['timed_requests_threshold'][@@vars['thresh_combo_counter']]}s): #{@@vars['total_missed_time_shapes']*1.0/@@vars['sim_repetitions']}
@@ -312,6 +283,7 @@ def show_average_stats()
 	@@vars['total_geofence_radius'] = 0
 	@@vars['total_left_fence_radius'] = 0
 	@@vars['total_visited_shapes'] = 0
+	@@vars['total_path_speed_ms'] = 0
 	return
 end
 
@@ -345,7 +317,7 @@ def shapes_here(point,shapes)
 end
 
 # Method to calculate fence misses from blackbox and timed request methods
-def calculate_misses (point,geo_id,shapes)
+def calculate_misses (point,geo_id,shapes,speed)
 	# In how many shapes is this point inside?
 	known_shapes = shapes_here(point,shapes)
 
@@ -378,7 +350,7 @@ def calculate_misses (point,geo_id,shapes)
 
 	# If the ellapsed walk time is smaller than timed_requests_threshold seconds
 	if @@vars['ellapsed_time'] < @@vars['timed_requests_threshold'][@@vars['thresh_combo_counter']]
-		@@vars['ellapsed_time'] += distance([@@vars['prev_point'].x(),@@vars['prev_point'].y()],[point.x(),point.y()])*111110/@@vars['walk_speed_ms']
+		@@vars['ellapsed_time'] += distance([@@vars['prev_point'].x(),@@vars['prev_point'].y()],[point.x(),point.y()])*111110/@@vars['fixed_walk_speed_ms']
 		@@vars['missed_time_shapes_ids'] << known_shapes
 	else
 		@@vars['ellapsed_time'] = 0
@@ -387,6 +359,18 @@ def calculate_misses (point,geo_id,shapes)
 	end
 
 	@@vars['prev_point'] = point
+	@@vars['prev_speed'] = speed
+end
+
+# Method to calculate average speed
+def avg_speed(point,walk_segments)
+	# TO DO: improve this so we account distance and not assume all segments are the same length
+	if @@vars['prev_point'] != nil and @@vars['prev_speed'] != nil
+		#dist = distance([@@vars['prev_point'].x(),@@vars['prev_point'].y()],[point.x(),point.y()])*111110
+		speed = @@vars['walk_speed_ms'][@@vars['prev_speed']]
+
+		@@vars['avg_path_speed_ms'] += speed
+	end
 end
 
 # Method to get the geofences
@@ -429,7 +413,7 @@ def make_req(point,geofence_id)
 				'lat' => "#{point[1]}"
 			}
 		},
-		'speed' => "#{@@vars['walk_speed_ms']}",
+		'speed' => "#{@@vars['walk_speed_ms'][point[2]]}",
 		'geo_object_ids' => [@@vars['sim_geofence_ids'][geofence_id]]
 	}
 
@@ -549,7 +533,7 @@ for thresh_combo in @@vars['timed_requests_threshold'].count.times do
 	# Test each of the @@var['sim_geofence_test_id']'s
 	for geo_id in @@vars['sim_geofence_test_id']
 
-		puts "\n_~^ Starting tests for geofence #{@@vars['sim_geofence_ids'][geo_id]} #{@@vars['walk_speed_kmh']}km/h #{@@vars['timed_requests_threshold'][@@vars['thresh_combo_counter']]}s #{@@vars['ios_distance_threshold'][@@vars['thresh_combo_counter']]}m ^~_"
+		puts "\n_~^ Starting tests for geofence #{@@vars['sim_geofence_ids'][geo_id]} #{@@vars['timed_requests_threshold'][@@vars['thresh_combo_counter']]}s #{@@vars['ios_distance_threshold'][@@vars['thresh_combo_counter']]}m ^~_"
 		calculate_density_stats(JSON[get_fences()],geo_id)
 
 		for w in @@vars['sim_repetitions'].times do
@@ -568,6 +552,7 @@ for thresh_combo in @@vars['timed_requests_threshold'].count.times do
 			@@vars['ellapsed_distance'] = 0
 			@@vars['ellapsed_time'] = 0
 			@@vars['walked_into_fences'] = 0
+			@@vars['avg_path_speed_ms'] = 0
 
 			# Init arrays
 			@@vars['missed_distance_shapes_ids'] = []
@@ -579,6 +564,7 @@ for thresh_combo in @@vars['timed_requests_threshold'].count.times do
 			geoid_fences = JSON[get_fences(geo_id).inspect.gsub('"{','{').gsub('}"','}').gsub('\"','"')][0]
 
 			# Initial request
+			walk['body'][0][2] = 1
 			make_req(walk['body'][0],geo_id)
 
 			# Cycle through all the points in the walk
@@ -586,8 +572,14 @@ for thresh_combo in @@vars['timed_requests_threshold'].count.times do
 				rgeo_point = @@vars['factory'].point(point[0],point[1])
 				#puts rgeo_point
 
+				# TO DELETE
+				point[2] = 1
+
+				# Update average speed
+				avg_speed(rgeo_point,walk['body'].length)
+
 				# Calculate fence misses on methods other than SUJ Geo
-				calculate_misses(rgeo_point,geo_id,geoid_fences['shapes'])
+				calculate_misses(rgeo_point,geo_id,geoid_fences['shapes'],point[2])
 
 				# For each polygon in the arriving list
 				# check if we already entered
