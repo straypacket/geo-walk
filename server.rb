@@ -31,7 +31,7 @@ get '/' do
   lon = params["lon"].to_f
   lat = params["lat"].to_f
   # Convert from Km to degrees
-  length = params["length"].to_f/111110
+  length = params["length"].to_f/(111110*2)
 
   # Build walk
   res = make_walk(db, lon, lat, length)
