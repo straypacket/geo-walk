@@ -30,8 +30,8 @@ get '/' do
   # Get params
   lon = params["lon"].to_f
   lat = params["lat"].to_f
-  # Convert from Km to degrees
-  length = params["length"].to_f/(111110*2)
+  # Convert from Km to degrees (this 1.2 factor needs to be analyzed, it gives best results for Tokyo)
+  length = params["length"].to_f/(111110*1.2)
 
   # Build walk
   res = make_walk(db, lon, lat, length)
@@ -64,7 +64,7 @@ def make_walk(db, lon, lat, length)
   walk['distance'] = local_arch['obj']['distance']
   walk['body'] = [local_arch['obj']['body']]
   walked = {}
-  rewalk_thresh = 5
+  rewalk_thresh = 2
 
   # Loop until we reach the requested length
   while walk['distance'] <= length
@@ -115,6 +115,8 @@ def make_walk(db, lon, lat, length)
     # Add body array to walk
     walk['body'].push(local_arch['obj']['body']) if local_arch
 
+    puts "Reported arc distance #{local_arch['obj']['distance']}"
+    puts "Arc first~last -> #{local_arch['obj']['body'][0]}~#{local_arch['obj']['body'][-1]}"
     # Accumulate distance
     walk['distance'] += (local_arch['obj']['distance']) if local_arch
   end
@@ -137,7 +139,7 @@ def get_arch(db, lon, lat, limit, length)
   selector['geoNear'] = 'train_station_coords'
   selector['near'] = [lon, lat]
   selector['spherical'] = true
-  selector['distanceMultiplier'] = 6371000
+  #selector['distanceMultiplier'] = 6371000
   selector['limit'] = 1
 
   # How many stations do we travel?
@@ -174,7 +176,7 @@ def get_arch(db, lon, lat, limit, length)
       # Only one must be chosen
       # TO DO: use commute dataset to statistically chose connection
       selector['limit'] = 1
-      selector['distanceMultiplier'] = 1
+      #selector['distanceMultiplier'] = 116.31
       train_line_res = db.command( selector )
 
       #For each train line
@@ -217,7 +219,8 @@ def get_arch(db, lon, lat, limit, length)
             dist += distance(arc['obj']['body'][p][0],arc['obj']['body'][p][1],arc['obj']['body'][p+1][0],arc['obj']['body'][p+1][1])
           end
 
-          arc['obj']['distance'] = dist
+          # Damned mongo is converting these at a different rate, we need to multiply the path by this rate
+          arc['obj']['distance'] = dist * 85.5 * 0.75
         end
       end
       # We're done with the train arc
@@ -228,7 +231,7 @@ def get_arch(db, lon, lat, limit, length)
   # Query for walk paths
   selector['geoNear'] = 'road_coords_head'
   selector['near'] = [lon, lat]
-  selector['distanceMultiplier'] = 6371
+  #selector['distanceMultiplier'] = 6371
   selector['limit'] = limit
   res = db.command( selector )
 
