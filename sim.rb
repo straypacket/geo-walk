@@ -70,7 +70,7 @@ require "rgeo"
 	#'sim_geofence_ids' => ['area_1', 'area_5'],
 	# list of geofence_ids to test
 	'sim_geofence_test_id' => [0,1,2,3,4,5,6,7,8,9],
-	'sim_repetitions' => 2
+	'sim_repetitions' => 1
 }
 
 if @@vars['file_output']
@@ -119,7 +119,7 @@ end
 # 	http.read_timeout = nil
 # 	resp = http.request(Net::HTTP::Get.new(uri.request_uri))
 # 	walk = JSON[resp.body]
-# 	puts resp.body
+# 	puts "'#{resp.body}',"
 # end
 # return
 ######
@@ -509,7 +509,7 @@ def get_walk(*args)
 			while dist > @@vars['walk_thresh']
 				x = aux[0] > walk['body'][c+1][0] ? aux[0]-d_x : aux[0]+d_x
 				y = aux[1] > walk['body'][c+1][1] ? aux[1]-d_y : aux[1]+d_y
-				aux = [x,y]
+				aux = [x,y,aux[2]]
 
 				new_walk['body'] << aux
 				dist = distance(aux,walk['body'][c+1])
@@ -564,16 +564,11 @@ for thresh_combo in @@vars['timed_requests_threshold'].count.times do
 			geoid_fences = JSON[get_fences(geo_id).inspect.gsub('"{','{').gsub('}"','}').gsub('\"','"')][0]
 
 			# Initial request
-			walk['body'][0][2] = 1
 			make_req(walk['body'][0],geo_id)
 
 			# Cycle through all the points in the walk
 			for point in walk['body'] do
 				rgeo_point = @@vars['factory'].point(point[0],point[1])
-				#puts rgeo_point
-
-				# TO DELETE
-				point[2] = 1
 
 				# Update average speed
 				avg_speed(rgeo_point,walk['body'].length)
