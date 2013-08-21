@@ -70,7 +70,7 @@ require "rgeo"
 	#'sim_geofence_ids' => ['area_1', 'area_5'],
 	# list of geofence_ids to test
 	'sim_geofence_test_id' => [0,1,2,3,4,5,6,7,8,9],
-	'sim_repetitions' => 1
+	'sim_repetitions' => 99
 }
 
 if @@vars['file_output']
@@ -494,6 +494,7 @@ def get_walk(*args)
 	# Inject intermediate points according to @@vars['walk_thresh']
 	new_walk['body'] = []
 	for c in (walk['body'].length-1).times do
+		next if walk['body'][c+1] == nil or walk['body'][c] == nil
 		dist = distance(walk['body'][c],walk['body'][c+1])
 		new_walk['body'] << walk['body'][c]
 		aux = walk['body'][c]
