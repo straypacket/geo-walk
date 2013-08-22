@@ -99,53 +99,53 @@ RGeo::Shapefile::Reader.open('data/N05-12_Station2.shp') do |file|
   end
 end
 
-indexes.each do |i|
+# Parse highway Shapefile
+col = db['road_coords']
+RGeo::Shapefile::Reader.open('data/tokyo_highway.shp') do |file|
+  puts "File contains #{file.num_records} records."
+  count = []
 
-  col = db['road_coords_'+i]
+  file.each do |record|
+    first = record.geometry[0].point_n(0)
+    last = record.geometry[0].point_n(record.geometry[0].num_points()-1)
 
-  # Parse highway Shapefile
-  RGeo::Shapefile::Reader.open('data/tokyo_highway.shp') do |file|
-    puts "File contains #{file.num_records} records."
-    count = []
+    index_coord = first
 
-    file.each do |record|
-      first = record.geometry[0].point_n(0)
-      last = record.geometry[0].point_n(record.geometry[0].num_points()-1)
-      total = record.geometry[0].num_points()
+    #Create query
+    p = {
+      :idx_loc => {
+        :lat => index_coord.x().to_f,
+        :lon => index_coord.y().to_f
+      },
+      :type => 'head',
+      :body => [],
+      :distance => 0.0
+    }
 
-      index_coord = first
-      if i == 'tail'
-        index_coord = last
+    # Create body and measure record distance
+    pp = nil
+    record.geometry[0].points.each do |c|
+      # Measure the distance between inner points
+      if pp
+        p[:distance] += pp.distance(c)
       end
 
-      #Create query
-      p = {
-        :idx_loc => {
-          :lat => index_coord.x().to_f,
-          :lon => index_coord.y().to_f
-        },
-        :type => i,
-        :body => []
-      }
-
-      distance = 0.0
-      pp = nil
-      record.geometry[0].points.each do |c|
-        # Measure the distance between inner points
-        if pp
-          distance += pp.distance(c)
-        end
-
-        p[:body].push([c.x(),c.y()])
-        pp = c
-      end
-      
-      # Add arch's distance
-      p[:distance] = distance
-
-      #Insert into MongoDB
-      col.insert(p)
+      p[:body].push([c.x(),c.y()])
+      pp = c
     end
-  end
 
+    #Insert into MongoDB
+    col.insert(p)
+
+    # Create the reverse path
+    index_coord = last
+
+    p[:idx_loc][:lat] = index_coord.x().to_f
+    p[:idx_loc][:lon] = index_coord.y().to_f
+    p[:type] = 'tail'
+    p[:body].reverse!
+
+    #Insert into MongoDB
+    col.insert(p)
+  end
 end
