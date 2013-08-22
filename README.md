@@ -97,10 +97,7 @@ As the name implies, this will always output the same path and fences.
 #### MongoDB indexes
 Mongo DB needs to have some of the document fields indexed in order to allow proper geographic indexing. The commands needed to achieve that, in this particular case, are:
 
-`db.road_coords.ensureIndex({"head": "2dsphere"})`
-`db.road_coords.ensureIndex({"tail": "2dsphere"})`
-`db.road_coords_head.ensureIndex({"idx_loc": "2dsphere"})`
-`db.road_coords_tail.ensureIndex({"idx_loc": "2dsphere"})`
+`db.road_coords.ensureIndex({"idx_loc": "2dsphere"})`
 `db.train_station_coords.ensureIndex({"idx_loc": "2dsphere"})`
 `db.bus_station_coords.ensureIndex({"idx_loc": "2dsphere"})`
 `db.train_lines.ensureIndex({"idx_loc": "2dsphere"})`
