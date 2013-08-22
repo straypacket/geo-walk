@@ -233,7 +233,7 @@ def get_arch(db, lon, lat, limit, length)
   selector['near'] = [lon, lat]
   #selector['distanceMultiplier'] = 6371
   selector['limit'] = limit
-  selector['maxDistance'] = 0.00015 #degrees
+  selector['maxDistance'] = 0.0015 #degrees
   res = db.command( selector )
 
   # Get which tail_point is closer to a train station
