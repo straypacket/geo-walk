@@ -119,15 +119,15 @@ RGeo::Shapefile::Reader.open('data/tokyo_highway.shp') do |file|
       },
       :type => 'head',
       :body => [],
-      :distance => 0.0
+      :length => 0.0
     }
 
-    # Create body and measure record distance
+    # Create body and measure record length
     pp = nil
     record.geometry[0].points.each do |c|
-      # Measure the distance between inner points
+      # Measure the length between inner points
       if pp
-        p[:distance] += pp.distance(c)
+        p[:length] += pp.distance(c)
       end
 
       p[:body].push([c.x(),c.y()])
