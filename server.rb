@@ -61,7 +61,7 @@ def make_walk(db, lon, lat, length)
 
   # Inits
   walk = ActiveSupport::OrderedHash.new
-  walk['distance'] = local_arch['obj']['distance']
+  walk['distance'] = local_arch['obj']['length']
   walk['body'] = [local_arch['obj']['body']]
   walked = {}
   rewalk_thresh = 2
@@ -73,11 +73,11 @@ def make_walk(db, lon, lat, length)
     
     if local_arch['obj']['body']
       old_body = local_arch['obj']['body']
-      local_arch = get_arch(db, old_body[old_body.length()-1][0], old_body[old_body.length()-1][1], limit, length)
+      local_arch = get_arch(db, old_body[-1][0], old_body[-1][1], limit, length)
 
       # Draw another arch if the one we got is invalid
-      while local_arch['obj']['distance'] == 0
-        local_arch = get_arch(db, old_body[old_body.length()-1][0], old_body[old_body.length()-1][1], limit, length)
+      while local_arch['obj']['length'] == 0
+        local_arch = get_arch(db, old_body[-1][0], old_body[-1][1], limit, length)
       end
 
       # Is this an already discovered path
@@ -85,17 +85,14 @@ def make_walk(db, lon, lat, length)
         walked[local_arch['obj']] += 1
         # If we walk past this arch for more than rewalk_thresh times, walk back until we find a fresh path
         if walked[local_arch['obj']] >= rewalk_thresh
-          puts "============= POPPING"
           # Walk back/ Pop dubious path from walked array
           popped = walk['body'].pop()
           # Update current position to last position after popping 
-          local_arch['obj']['body'] = walk['body'][walk['body'].length()-1]
+          local_arch['obj']['body'] = walk['body'][-1]
           # Roughly update distance
           if popped
             walk['distance'] -= distance(popped[0][0],popped[0][1],popped[-1][0],popped[-1][1]) if popped.length >= 2
           end
-          # Increase the search limit
-          limit += 1
           # Get another arch
           next
         end
@@ -107,7 +104,7 @@ def make_walk(db, lon, lat, length)
       puts "Too much pop!"
       walk['distance'] = 0
       if old_body
-        local_arch = get_arch(db, old_body[old_body.length()-1][0], old_body[old_body.length()-1][1], limit, length) 
+        local_arch = get_arch(db, old_body[-1][0], old_body[-1][1], limit, length) 
       else
         local_arch = get_arch(db, lon, lat, limit, length)
       end
@@ -117,14 +114,15 @@ def make_walk(db, lon, lat, length)
     # Add body array to walk
     walk['body'].push(local_arch['obj']['body']) if local_arch
 
-    #puts "Reported arc distance #{local_arch['obj']['distance']}"
+    #puts "Reported arc distance #{local_arch['obj']['length']}"
     #puts "Arc first~last -> #{local_arch['obj']['body'][0]}~#{local_arch['obj']['body'][-1]}"
     # Accumulate distance
-    walk['distance'] += (local_arch['obj']['distance']) if local_arch
+    walk['distance'] += (local_arch['obj']['length']) if local_arch
   end
 
   # Flatten array so that archs are merged into contiguous [lon,lat] pairs
   walk['body'] = walk['body'].flatten(1)
+
 
   return walk
 end
@@ -152,7 +150,7 @@ def get_arch(db, lon, lat, limit, length)
   hops = 2+rand(10)
   arc = {}
   arc['obj'] = {}
-  arc['obj']['distance'] = 0
+  arc['obj']['length'] = 0
 
   # Get nearby train stations
   train_stations_res = db.command( selector )
@@ -160,7 +158,7 @@ def get_arch(db, lon, lat, limit, length)
   # For each train station
   train_stations_res['results'].each do |train_station|
     # If closer than 100m  to a train station and the odds are in our side
-    if train_station['dis'] < 100 and rand(6) == 5
+    if train_station['dis'] < 100 and rand(6) == 5# and false
       # This code is the concatenation of the line code plus the station code
       # By operating on this code we can decide which station we stop at
       # TO DO: + or -
@@ -222,7 +220,7 @@ def get_arch(db, lon, lat, limit, length)
           end
 
           # Damned mongo is converting these at a different rate, we need to multiply the path by this rate
-          arc['obj']['distance'] = dist * 85.5 * 0.75
+          arc['obj']['length'] = dist * 85.5 * 0.75
         end
       end
       # We're done with the train arc
@@ -231,10 +229,11 @@ def get_arch(db, lon, lat, limit, length)
   end
 
   # Query for walk paths
-  selector['geoNear'] = 'road_coords_head'
+  selector['geoNear'] = 'road_coords'
   selector['near'] = [lon, lat]
   #selector['distanceMultiplier'] = 6371
   selector['limit'] = limit
+  selector['maxDistance'] = 0.00015 #degrees
   res = db.command( selector )
 
   # Get which tail_point is closer to a train station
@@ -250,21 +249,19 @@ def get_arch(db, lon, lat, limit, length)
 
     # Average the distance from the last point of the arc
     # to the closest _limit_ train distances
-    # TO DO: play with this _limit_ variable
-    sdist = 0.0
-    station_res['results'].each { |sd| sdist += sd['dis'] }
-    avg_sdist = sdist/station_res['results'].size
+    avg_sdist = station_res['stats']['avgDistance']
 
     # Push to array with original data and 
     # newly calculated distance to train stations
-    ordered_res.push({'dist' => avg_sdist, 'arc' => p})
+    ordered_res.push({'avg_dist_to_trains' => avg_sdist, 'arc' => p})
   end
 
-  # Sort new array
-  sorted = ordered_res.sort_by { |k| k["dist"] }
+  # Sort new array based on avg of distance to closest trains and distance to next path
+  sorted = ordered_res.sort_by { |k| (k['avg_dist_to_trains']+k['arc']['dis'])/2 }
 
   # Generate random element, based on a Gaussian distribution
   r = (rand(limit) - (limit-2)).abs
+  #puts sorted[r]
   arc = sorted[r]['arc']
 
   # Add walk type for each point (0 for walk)
